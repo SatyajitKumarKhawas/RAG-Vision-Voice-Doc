@@ -72,169 +72,169 @@ Keep your answer concise (max 2 sentences). No preamble, start your answer right
 
 # Voice input HTML/JS component
 def create_voice_input_component():
-    """Create the voice input HTML component"""
-    voice_html = """
-    <div style="padding: 10px; border: 2px dashed #ccc; border-radius: 10px; margin: 10px 0; text-align: center;">
-        <h4 style="margin-top: 0;">🎤 Voice Input</h4>
-        <button id="startBtn" onclick="startRecording()" style="
-            background-color: #4CAF50; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">🎤 Start Recording</button>
-        
-        <button id="stopBtn" onclick="stopRecording()" disabled style="
-            background-color: #f44336; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">🛑 Stop Recording</button>
-        
-        <div id="status" style="margin: 10px; font-weight: bold; color: #666;"></div>
-        <div id="transcript" style="
-            margin: 10px; 
-            padding: 10px; 
-            background-color: #f0f0f0; 
-            border-radius: 5px; 
-            min-height: 40px;
-            font-style: italic;
-        ">Your transcribed text will appear here...</div>
-        
-        <button id="sendBtn" onclick="sendToChat()" disabled style="
-            background-color: #2196F3; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">📤 Send to Chat</button>
-        
-        <button id="clearBtn" onclick="clearTranscript()" style="
-            background-color: #ff9800; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">🗑 Clear</button>
-    </div>
+    """Create the voice input HTML component"""
+    voice_html = """
+    <div style="padding: 10px; border: 2px dashed #ccc; border-radius: 10px; margin: 10px 0; text-align: center;">
+        <h4 style="margin-top: 0;">🎤 Voice Input</h4>
+        <button id="startBtn" onclick="startRecording()" style="
+            background-color: #4CAF50; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        ">🎤 Start Recording</button>
+        
+        <button id="stopBtn" onclick="stopRecording()" disabled style="
+            background-color: #f44336; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        ">🛑 Stop Recording</button>
+        
+        <div id="status" style="margin: 10px; font-weight: bold; color: #666;"></div>
+        <div id="transcript" style="
+            margin: 10px; 
+            padding: 10px; 
+            background-color: #f0f0f0; 
+            border-radius: 5px; 
+            min-height: 40px;
+            font-style: italic;
+        ">Your transcribed text will appear here...</div>
+        
+        <button id="sendBtn" onclick="sendToChat()" disabled style="
+            background-color: #2196F3; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        ">📤 Send to Chat</button>
+        
+        <button id="clearBtn" onclick="clearTranscript()" style="
+            background-color: #ff9800; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 5px; 
+            cursor: pointer;
+            margin: 5px;
+            font-size: 16px;
+        ">🗑 Clear</button>
+    </div>
 
-    <script>
-    let recognition = null;
-    let isRecording = false;
-    let finalTranscript = '';
+    <script>
+    let recognition = null;
+    let isRecording = false;
+    let finalTranscript = '';
 
-    // Check if browser supports speech recognition
-    if ('webkitSpeechRecognition' in window) {
-        recognition = new webkitSpeechRecognition();
-    } else if ('SpeechRecognition' in window) {
-        recognition = new SpeechRecognition();
-    }
+    // Check if browser supports speech recognition
+    if ('webkitSpeechRecognition' in window) {
+        recognition = new webkitSpeechRecognition();
+    } else if ('SpeechRecognition' in window) {
+        recognition = new SpeechRecognition();
+    }
 
-    if (recognition) {
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
+    if (recognition) {
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
 
-        recognition.onstart = function() {
-            isRecording = true;
-            document.getElementById('startBtn').disabled = true;
-            document.getElementById('stopBtn').disabled = false;
-            document.getElementById('status').innerHTML = '🔴 Recording... Speak now!';
-            document.getElementById('status').style.color = '#f44336';
-        };
+        recognition.onstart = function() {
+            isRecording = true;
+            document.getElementById('startBtn').disabled = true;
+            document.getElementById('stopBtn').disabled = false;
+            document.getElementById('status').innerHTML = '🔴 Recording... Speak now!';
+            document.getElementById('status').style.color = '#f44336';
+        };
 
-        recognition.onresult = function(event) {
-            let interimTranscript = '';
-            
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                const transcript = event.results[i][0].transcript;
-                if (event.results[i].isFinal) {
-                    finalTranscript += transcript + ' ';
-                } else {
-                    interimTranscript += transcript;
-                }
-            }
-            
-            document.getElementById('transcript').innerHTML = 
-                finalTranscript + '<span style="color: #999;">' + interimTranscript + '</span>';
-        };
+        recognition.onresult = function(event) {
+            let interimTranscript = '';
+            
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript + ' ';
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+            
+            document.getElementById('transcript').innerHTML = 
+                finalTranscript + '<span style="color: #999;">' + interimTranscript + '</span>';
+        };
 
-        recognition.onerror = function(event) {
-            document.getElementById('status').innerHTML = '❌ Error: ' + event.error;
-            document.getElementById('status').style.color = '#f44336';
-            resetButtons();
-        };
+        recognition.onerror = function(event) {
+            document.getElementById('status').innerHTML = '❌ Error: ' + event.error;
+            document.getElementById('status').style.color = '#f44336';
+            resetButtons();
+        };
 
-        recognition.onend = function() {
-            isRecording = false;
-            resetButtons();
-            if (finalTranscript.trim() !== '') {
-                document.getElementById('sendBtn').disabled = false;
-                document.getElementById('status').innerHTML = '✅ Recording completed!';
-                document.getElementById('status').style.color = '#4CAF50';
-            } else {
-                document.getElementById('status').innerHTML = '⚠ No speech detected';
-                document.getElementById('status').style.color = '#ff9800';
-            }
-        };
-    } else {
-        document.getElementById('status').innerHTML = '❌ Speech recognition not supported in this browser';
-        document.getElementById('startBtn').disabled = true;
-    }
+        recognition.onend = function() {
+            isRecording = false;
+            resetButtons();
+            if (finalTranscript.trim() !== '') {
+                document.getElementById('sendBtn').disabled = false;
+                document.getElementById('status').innerHTML = '✅ Recording completed!';
+                document.getElementById('status').style.color = '#4CAF50';
+            } else {
+                document.getElementById('status').innerHTML = '⚠ No speech detected';
+                document.getElementById('status').style.color = '#ff9800';
+            }
+        };
+    } else {
+        document.getElementById('status').innerHTML = '❌ Speech recognition not supported in this browser';
+        document.getElementById('startBtn').disabled = true;
+    }
 
-    function startRecording() {
-        if (recognition && !isRecording) {
-            finalTranscript = '';
-            document.getElementById('transcript').innerHTML = 'Listening...';
-            document.getElementById('sendBtn').disabled = true;
-            recognition.start();
-        }
-    }
+    function startRecording() {
+        if (recognition && !isRecording) {
+            finalTranscript = '';
+            document.getElementById('transcript').innerHTML = 'Listening...';
+            document.getElementById('sendBtn').disabled = true;
+            recognition.start();
+        }
+    }
 
-    function stopRecording() {
-        if (recognition && isRecording) {
-            recognition.stop();
-        }
-    }
+    function stopRecording() {
+        if (recognition && isRecording) {
+            recognition.stop();
+        }
+    }
 
-    function resetButtons() {
-        document.getElementById('startBtn').disabled = false;
-        document.getElementById('stopBtn').disabled = true;
-    }
+    function resetButtons() {
+        document.getElementById('startBtn').disabled = false;
+        document.getElementById('stopBtn').disabled = true;
+    }
 
-    function sendToChat() {
-        if (finalTranscript.trim() !== '') {
-            // Store in session storage for Streamlit to pick up
-            parent.sessionStorage.setItem('voice_input', finalTranscript.trim());
-            
-            document.getElementById('status').innerHTML = '📤 Sent to chat!';
-            document.getElementById('status').style.color = '#4CAF50';
-        }
-    }
+    function sendToChat() {
+        if (finalTranscript.trim() !== '') {
+            // Store in session storage for Streamlit to pick up
+            parent.sessionStorage.setItem('voice_input', finalTranscript.trim());
+            
+            document.getElementById('status').innerHTML = '📤 Sent to chat!';
+            document.getElementById('status').style.color = '#4CAF50';
+        }
+    }
 
-    function clearTranscript() {
-        finalTranscript = '';
-        document.getElementById('transcript').innerHTML = 'Your transcribed text will appear here...';
-        document.getElementById('sendBtn').disabled = true;
-        document.getElementById('status').innerHTML = '';
-        parent.sessionStorage.removeItem('voice_input');
-    }
-    </script>
-    """
-    return voice_html
+    function clearTranscript() {
+        finalTranscript = '';
+        document.getElementById('transcript').innerHTML = 'Your transcribed text will appear here...';
+        document.getElementById('sendBtn').disabled = true;
+        document.getElementById('status').innerHTML = '';
+        parent.sessionStorage.removeItem('voice_input');
+    }
+    </script>
+    """
+    return voice_html
 
 # Utility Functions
 @st.cache_data
@@ -788,3 +788,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
