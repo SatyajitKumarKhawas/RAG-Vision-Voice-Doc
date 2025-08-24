@@ -10,4 +10,6 @@ pypdf
 gTTS
 pydub
 elevenlabs
+transformers
+sentence-transformers
 
