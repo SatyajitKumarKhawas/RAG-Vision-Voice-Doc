@@ -272,17 +272,17 @@ def analyze_image_with_query(query, model, encoded_image, api_key):
     
     return chat_completion.choices[0].message.content
 def transcribe_with_groq(stt_model, audio_filepath, api_key):
-    """Transcribe audio using GROQ API."""
-    client = Groq(api_key=api_key)
-    
-    with open(audio_filepath, "rb") as audio_file:
-        transcription = client.audio.transcriptions.create(
-            model=stt_model,
-            file=audio_file,
-            language="en"
-        )
-    
-    return transcription.text
+    """Transcribe audio using GROQ API."""
+    client = Groq(api_key=api_key)
+    
+    with open(audio_filepath, "rb") as audio_file:
+        transcription = client.audio.transcriptions.create(
+            model=stt_model,
+            file=audio_file,
+            language="en"
+        )
+    
+    return transcription.text
 
 def text_to_speech_with_gtts(input_text, output_filepath):
     """Convert text to speech using gTTS."""
@@ -788,6 +788,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
