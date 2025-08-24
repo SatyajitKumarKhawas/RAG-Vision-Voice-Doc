@@ -2,6 +2,7 @@ streamlit
 langchain
 langchain-community
 langchain-google-genai
+langchain-huggingface
 langchain-groq
 faiss-cpu
 python-dotenv
@@ -9,3 +10,4 @@ pypdf
 gTTS
 pydub
 elevenlabs
+
