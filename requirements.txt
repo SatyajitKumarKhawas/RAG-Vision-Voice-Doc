@@ -1,11 +1,11 @@
 streamlit
 langchain
 langchain-community
-langchain-huggingface
 langchain-google-genai
-groq
-gtts
-python-dotenv
+langchain-groq
 faiss-cpu
-sentence-transformers
+python-dotenv
+pypdf
+gTTS
+pydub
 elevenlabs
