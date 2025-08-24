@@ -237,11 +237,12 @@ def create_voice_input_component():
     return voice_html
 
 # Utility Functions
+
 @st.cache_data
 def encode_image(image_path):
-    """Encode image to base64."""
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+    """Encode image to base64."""
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
 
 def analyze_image_with_query(query, model, encoded_image, api_key):
     """Analyze image using GROQ API."""
@@ -788,4 +789,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
