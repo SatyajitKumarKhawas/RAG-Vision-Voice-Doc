@@ -1170,9 +1170,19 @@ def main():
     """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    main()Q-9 (Depression)", "GAD-7 (Anxiety)", "GHQ-12 (General Mental Health)"]
-        )
-        
+    main()
+    
+    # Corrected code snippet
+    screening_options = [
+        "Select an assessment...",
+        "PHQ-9 (Depression)",
+        "GAD-7 (Anxiety)",
+        "GHQ-12 (General Mental Health)"
+    ]
+    
+    # This list would then be used in a function call, like this:
+    # screening_type = some_ui_function(screening_options
+   
         if screening_type != "Select an assessment...":
             test_name = screening_type.split(" ")[0]
             create_screening_interface(test_name)
@@ -1322,3 +1332,4 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     main()
+
