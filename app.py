@@ -1171,18 +1171,18 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
-    # Corrected code snippet
+
+    # Corrected code
     screening_options = [
-        "Select an assessment...",
         "PHQ-9 (Depression)",
         "GAD-7 (Anxiety)",
         "GHQ-12 (General Mental Health)"
     ]
-    
-    # This list would then be used in a function call, like this:
-    # screening_type = some_ui_function(screening_options
-   
+
+    # The code that follows would then use this list
+    # For example, in a Streamlit app:
+    # screening_type = st.selectbox("Select a screening test:", screening_options)
+        
         if screening_type != "Select an assessment...":
             test_name = screening_type.split(" ")[0]
             create_screening_interface(test_name)
@@ -1332,4 +1332,3 @@ if __name__ == "__main__":
 
 if __name__ == "__main__":
     main()
-
