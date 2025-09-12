@@ -1098,6 +1098,26 @@ def main():
                         
                         st.markdown(result)
                         
+                        # Display source documents if available
+                        if source_docs:
+                            with st.expander("📚 Mental Health Knowledge Sources"):
+                                for i, doc in enumerate(source_docs, 1):
+                                    st.markdown(f"**Source {i}:**")
+                                    # Show content preview
+                                    content_preview = doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content
+                                    st.text(content_preview)
+                                    
+                                    # Show metadata in formatted way
+                                    if hasattr(doc, 'metadata') and doc.metadata:
+                                        metadata = doc.metadata
+                                        st.json({
+                                            "source": metadata.get('source', 'Unknown'),
+                                            "page": metadata.get('page', 'Unknown'),
+                                            "page_label": metadata.get('page_label', 'Unknown'),
+                                            "total_pages": metadata.get('total_pages', 'Unknown')
+                                        })
+                                    st.markdown("---")
+                        
                         # Generate calming audio response
                         if 'vision_processor' in st.session_state:
                             audio_path = st.session_state.vision_processor.generate_calming_audio(
@@ -1123,12 +1143,18 @@ def main():
                             st.markdown(f"💭 **Their approach:** {recommended_counselor['style']}")
                             st.markdown(f"✨ **Best for:** {recommended_counselor['focus']}")
                         
+                        # Prepare content with sources for session state
+                        content_with_sources = result
+                        if source_docs:
+                            content_with_sources += f"\n\n*Sources:* {len(source_docs)} mental health resource(s) referenced"
+                        
                         st.session_state.messages.append({
                             'role': 'assistant',
-                            'content': result,
+                            'content': content_with_sources,
                             'type': 'counselor_response',
                             'audio_path': audio_path if 'audio_path' in locals() else None,
-                            'recommended_counselor': recommended_counselor
+                            'recommended_counselor': recommended_counselor,
+                            'source_docs': source_docs
                         })
             else:
                 st.error("The counselor support system isn't available right now, but please know that your feelings are valid. Consider reaching out to one of our campus counselors directly.")
