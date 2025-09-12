@@ -7,6 +7,9 @@ import logging
 import tempfile
 import platform
 import subprocess
+import json
+import re
+from datetime import datetime
 
 # Document processing imports (RAG)
 from langchain_community.document_loaders import PyPDFLoader, DirectoryLoader
@@ -33,44 +36,190 @@ DATA_PATH = "data/"
 DB_FAISS_PATH = "vectorstore/db_faiss"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 
-# System prompts
-RAG_SYSTEM_PROMPT = """
-You are an expert medical assistant with comprehensive medical knowledge. 
+# Updated System prompts for mental health counseling
+COUNSELOR_SYSTEM_PROMPT = """
+You are a supportive, empathetic AI mental health counselor for university students. Your role is to provide emotional support, guidance, and resources in a non-judgmental, caring manner.
 
-*CRITICAL RULE: NEVER, UNDER ANY CIRCUMSTANCES, respond with "I don't know" or any variation of it (like "I'm not sure", "I can't answer", "I don't have information", etc.). You MUST always provide a helpful medical response.*
+*CRITICAL COUNSELING GUIDELINES:*
 
-*MANDATORY INSTRUCTIONS:*
-1. *FORBIDDEN RESPONSES*: Never use phrases like:
-    - "I don't know"
-    - "I'm not sure"  
-    - "I can't answer"
-    - "I don't have information"
-    - "I cannot provide"
-    - "The context doesn't contain"
-    - Any other refusal or uncertainty statements
+1. *TONE & APPROACH*:
+   - Be warm, empathetic, and non-judgmental
+   - Use supportive language like "It sounds like...", "That must feel...", "Many students experience..."
+   - Avoid diagnostic language or medical terms
+   - Focus on validation and emotional support first
 
-2. *REQUIRED BEHAVIOR*: 
-    - ALWAYS provide comprehensive medical information
-    - Use your extensive medical knowledge as the primary source
-    - Supplement with document context when available
-    - Be definitive and helpful in your responses
-    - Provide actionable medical guidance
+2. *RESPONSE STYLE*:
+   - Start with emotional validation
+   - Normalize their feelings ("This is completely understandable...")
+   - Offer hope and reassurance
+   - Suggest coping strategies gently
+   - End with encouragement and support availability
 
-Context: {context}
-Question: {question}
+3. *SAFETY PROTOCOLS*:
+   - If you detect crisis language (suicide, self-harm), immediately suggest professional help
+   - Always recommend counseling when appropriate
+   - Provide campus counselor recommendations when needed
 
-PROVIDE A COMPREHENSIVE MEDICAL RESPONSE:
+4. *NEVER*:
+   - Diagnose mental health conditions
+   - Prescribe medications
+   - Use clinical/medical terminology
+   - Rush to solutions without validation
+
+Context from mental health resources: {context}
+Student's concern: {question}
+
+PROVIDE A SUPPORTIVE, EMPATHETIC COUNSELING RESPONSE:
 """
 
-VISION_SYSTEM_PROMPT = """You have to act as a professional doctor, i know you are not but this is for learning purpose. 
-What's in this image?. Do you find anything wrong with it medically? 
-If you make a differential, suggest some remedies for them. Donot add any numbers or special characters in 
-your response. Your response should be in one long paragraph. Also always answer as if you are answering to a real person.
-Donot say 'In the image I see' but say 'With what I see, I think you have ....'
-Dont respond as an AI model in markdown, your answer should mimic that of an actual doctor not an AI bot, 
-Keep your answer concise (max 2 sentences). No preamble, start your answer right away please"""
+VISION_COUNSELOR_PROMPT = """You are a caring mental health counselor analyzing visual content from a student. 
 
-# Voice input HTML/JS component
+Look at this image with empathy and understanding. This might be:
+- Journal entries or notes expressing feelings
+- Artwork or drawings reflecting emotions
+- Photos that might indicate mood or wellbeing
+- Academic stress indicators
+
+Respond as a supportive counselor would:
+- Acknowledge what you observe with empathy
+- Validate any emotions you perceive
+- Offer gentle insights about emotional patterns
+- Suggest healthy coping strategies
+- Be encouraging and non-judgmental
+
+Start your response with something like "I can see that you're expressing..." or "From what you've shared visually..."
+Keep your tone warm, supportive, and understanding. No clinical language - speak like a caring counselor would."""
+
+# Mental Health Screening Questionnaires
+PHQ9_QUESTIONS = [
+    "Over the last 2 weeks, how often have you had little interest or pleasure in doing things?",
+    "Over the last 2 weeks, how often have you felt down, depressed, or hopeless?",
+    "Over the last 2 weeks, how often have you had trouble falling or staying asleep, or sleeping too much?",
+    "Over the last 2 weeks, how often have you felt tired or had little energy?",
+    "Over the last 2 weeks, how often have you had poor appetite or been overeating?",
+    "Over the last 2 weeks, how often have you felt bad about yourself — or felt like a failure or let yourself or family down?",
+    "Over the last 2 weeks, how often have you had trouble concentrating on things, such as reading or watching TV?",
+    "Over the last 2 weeks, how often have you moved or spoken slowly, or been fidgety or restless?",
+    "Over the last 2 weeks, how often have you had thoughts that you would be better off dead, or thoughts of hurting yourself?"
+]
+
+GAD7_QUESTIONS = [
+    "Over the last 2 weeks, how often have you felt nervous, anxious, or on edge?",
+    "Over the last 2 weeks, how often have you not been able to stop or control worrying?",
+    "Over the last 2 weeks, how often have you worried too much about different things?",
+    "Over the last 2 weeks, how often have you had trouble relaxing?",
+    "Over the last 2 weeks, how often have you been so restless that it's hard to sit still?",
+    "Over the last 2 weeks, how often have you become easily annoyed or irritable?",
+    "Over the last 2 weeks, how often have you felt afraid as if something awful might happen?"
+]
+
+GHQ12_QUESTIONS = [
+    "In the last few weeks, have you been able to concentrate on what you are doing?",
+    "In the last few weeks, have you lost much sleep over worry?",
+    "In the last few weeks, have you felt that you are playing a useful part in things?",
+    "In the last few weeks, have you felt capable of making decisions about things?",
+    "In the last few weeks, have you felt constantly under strain?",
+    "In the last few weeks, have you felt you couldn't overcome your difficulties?",
+    "In the last few weeks, have you been able to enjoy your normal day-to-day activities?",
+    "In the last few weeks, have you been able to face up to problems?",
+    "In the last few weeks, have you been feeling unhappy and depressed?",
+    "In the last few weeks, have you been losing confidence in yourself?",
+    "In the last few weeks, have you been thinking of yourself as a worthless person?",
+    "In the last few weeks, have you been feeling reasonably happy, all things considered?"
+]
+
+RESPONSE_OPTIONS = ["Not at all", "Several days", "More than half the days", "Nearly every day"]
+GHQ_RESPONSE_OPTIONS = ["Better than usual", "Same as usual", "Less than usual", "Much less than usual"]
+
+# Counselor Database
+COUNSELORS = {
+    "anxiety_depression": {
+        "name": "Dr. Meera Sharma",
+        "phone": "+91-98765-43210",
+        "qualification": "Ph.D. in Clinical Psychology, University of Delhi",
+        "expertise": ["Anxiety disorders", "Depression management", "Cognitive Behavioral Therapy (CBT)"],
+        "style": "Calm, empathetic, evidence-driven; prefers structured therapy sessions",
+        "focus": "Academic stress, panic attacks, and depressive episodes"
+    },
+    "relationships_stress": {
+        "name": "Mr. Arjun Malhotra",
+        "phone": "+91-99123-45678",
+        "qualification": "M.A. in Counselling Psychology, Tata Institute of Social Sciences (TISS)",
+        "expertise": ["Relationship counselling", "Stress management", "Career confusion"],
+        "style": "Friendly, approachable, non-judgmental; believes in open dialogue",
+        "focus": "Peer pressure, relationship issues, and uncertainty about the future"
+    },
+    "severe_mental_health": {
+        "name": "Dr. Farah Qureshi",
+        "phone": "+91-98012-33445",
+        "qualification": "MD in Psychiatry, AIIMS Delhi",
+        "expertise": ["Severe depression", "Bipolar disorder", "Medication-based interventions"],
+        "style": "Direct but compassionate; explains conditions in simple language",
+        "focus": "Suicidal thoughts, mood disorders, or psychiatric emergencies"
+    },
+    "trauma_ptsd": {
+        "name": "Ms. Radhika Sen",
+        "phone": "+91-97999-88776",
+        "qualification": "M.Sc. in Clinical Psychology, Christ University",
+        "expertise": ["Trauma counselling", "PTSD", "Mindfulness and relaxation techniques"],
+        "style": "Warm, nurturing, patient listener; uses art therapy and guided relaxation",
+        "focus": "Bullying, harassment, family trauma, or social withdrawal"
+    },
+    "substance_adjustment": {
+        "name": "Mr. Kabir Singh",
+        "phone": "+91-91234-77890",
+        "qualification": "M.A. in Rehabilitation Counselling, Jamia Millia Islamia",
+        "expertise": ["Substance abuse recovery", "Disability adjustment", "Peer-support training"],
+        "style": "Energetic, motivating, community-focused; encourages resilience through group support",
+        "focus": "Addiction, adjustment issues, or long-term rehabilitation support"
+    }
+}
+
+# Relaxation audio content generator
+RELAXATION_SCRIPTS = {
+    "breathing": """
+    Let's do a simple breathing exercise together. Find a comfortable position and close your eyes if you feel comfortable.
+    
+    Take a slow, deep breath in through your nose for 4 counts... 1, 2, 3, 4.
+    Now hold that breath gently for 2 counts... 1, 2.
+    Slowly exhale through your mouth for 6 counts... 1, 2, 3, 4, 5, 6.
+    
+    Let's repeat this two more times. Breathe in... 1, 2, 3, 4. Hold... 1, 2. Out... 1, 2, 3, 4, 5, 6.
+    
+    One more time. In... 1, 2, 3, 4. Hold... 1, 2. Out... 1, 2, 3, 4, 5, 6.
+    
+    Notice how your body feels now. You're doing great. Remember, you can do this breathing exercise anytime you feel overwhelmed.
+    """,
+    
+    "mindfulness": """
+    Let's take a moment for mindful awareness. Sit comfortably and take three natural breaths.
+    
+    Now, notice five things you can see around you. Just observe them without judgment.
+    Notice four things you can touch - the texture of your clothes, the temperature of the air.
+    Listen for three sounds around you - maybe traffic, voices, or silence itself.
+    Notice two things you can smell.
+    And one thing you can taste.
+    
+    This is called grounding. It helps bring you back to the present moment when anxiety or worry takes over.
+    You've just given yourself a gift of presence. Well done.
+    """,
+    
+    "progressive_relaxation": """
+    We're going to relax your body, one part at a time. Get comfortable and close your eyes if you'd like.
+    
+    Start by tensing your fists tightly for 5 seconds... now release and feel the relaxation.
+    Tense your arms and shoulders... hold... now let go and feel the tension melting away.
+    Scrunch up your face muscles... hold... now relax and feel your face soften.
+    
+    Tense your chest and back... hold... now release and feel your breathing deepen.
+    Tighten your stomach muscles... hold... now let go completely.
+    Tense your legs and feet... hold tight... now release and feel heavy and relaxed.
+    
+    Take a moment to notice how relaxed your body feels now. This is your natural state of calm.
+    """
+}
+
+# Voice input HTML/JS component (same as original)
 def create_voice_input_component():
     """Create the voice input HTML component"""
     voice_html = """
@@ -284,28 +433,26 @@ def transcribe_with_groq(stt_model, audio_filepath, api_key):
     
     return transcription.text
 
-def text_to_speech_with_gtts(input_text, output_filepath):
-    """Convert text to speech using gTTS."""
+def text_to_speech_with_gtts(input_text, output_filepath, slow_speed=True):
+    """Convert text to speech using gTTS with slower, calmer pace."""
     language = "en"
     
     audioobj = gTTS(
         text=input_text,
         lang=language,
-        slow=False
+        slow=slow_speed  # Slower for more calming effect
     )
     audioobj.save(output_filepath)
     return output_filepath
-
-
-
 
 def text_to_speech_with_elevenlabs(input_text, output_filepath, api_key):
     try:
         from elevenlabs.client import ElevenLabs
         client = ElevenLabs(api_key=api_key)
 
+        # Use a calm, soothing voice
         response = client.text_to_speech.convert(
-            voice_id="Aria",  # change to valid voice
+            voice_id="Rachel",  # Changed to a calmer voice
             model_id="eleven_turbo_v2",
             text=input_text
         )
@@ -319,10 +466,90 @@ def text_to_speech_with_elevenlabs(input_text, output_filepath, api_key):
         st.error(f"ElevenLabs TTS failed: {e}")
         return text_to_speech_with_gtts(input_text, output_filepath)
 
+# Mental Health Screening Functions
+def calculate_phq9_score(responses):
+    """Calculate PHQ-9 depression severity score"""
+    score = sum(responses)
+    if score <= 4:
+        return score, "Minimal depression"
+    elif score <= 9:
+        return score, "Mild depression"
+    elif score <= 14:
+        return score, "Moderate depression"
+    elif score <= 19:
+        return score, "Moderately severe depression"
+    else:
+        return score, "Severe depression"
 
+def calculate_gad7_score(responses):
+    """Calculate GAD-7 anxiety severity score"""
+    score = sum(responses)
+    if score <= 4:
+        return score, "Minimal anxiety"
+    elif score <= 9:
+        return score, "Mild anxiety"
+    elif score <= 14:
+        return score, "Moderate anxiety"
+    else:
+        return score, "Severe anxiety"
 
+def calculate_ghq12_score(responses):
+    """Calculate GHQ-12 psychological distress score"""
+    # For GHQ-12, responses are scored differently
+    # Better/Same = 0, Less/Much less = 1
+    binary_responses = []
+    for resp in responses:
+        if resp in [0, 1]:  # Better than usual, Same as usual
+            binary_responses.append(0)
+        else:  # Less than usual, Much less than usual
+            binary_responses.append(1)
+    
+    score = sum(binary_responses)
+    if score <= 2:
+        return score, "Low psychological distress"
+    elif score <= 5:
+        return score, "Moderate psychological distress"
+    else:
+        return score, "High psychological distress"
 
+def recommend_counselor(assessment_results, user_concerns=""):
+    """Recommend appropriate counselor based on assessment and concerns"""
+    concerns_lower = user_concerns.lower()
+    
+    # Check for crisis keywords first
+    crisis_keywords = ["suicide", "kill", "die", "hurt myself", "end it all", "no point"]
+    if any(keyword in concerns_lower for keyword in crisis_keywords):
+        return "severe_mental_health"
+    
+    # Check for trauma/PTSD keywords
+    trauma_keywords = ["trauma", "abuse", "assault", "bullying", "harassment", "ptsd"]
+    if any(keyword in concerns_lower for keyword in trauma_keywords):
+        return "trauma_ptsd"
+    
+    # Check for substance abuse keywords
+    substance_keywords = ["alcohol", "drugs", "drinking", "smoking", "addiction"]
+    if any(keyword in concerns_lower for keyword in substance_keywords):
+        return "substance_adjustment"
+    
+    # Check for relationship keywords
+    relationship_keywords = ["relationship", "breakup", "girlfriend", "boyfriend", "family", "friends", "lonely"]
+    if any(keyword in concerns_lower for keyword in relationship_keywords):
+        return "relationships_stress"
+    
+    # Based on assessment scores
+    if 'phq9' in assessment_results or 'gad7' in assessment_results:
+        phq9_score = assessment_results.get('phq9', {}).get('score', 0)
+        gad7_score = assessment_results.get('gad7', {}).get('score', 0)
+        
+        if phq9_score >= 15 or gad7_score >= 15:
+            return "severe_mental_health"
+        elif phq9_score >= 5 or gad7_score >= 5:
+            return "anxiety_depression"
+    
+    # Default to general counselor
+    return "relationships_stress"
 
+# Document Processing Classes (same as original)
 class DocumentProcessor:
     """Handles PDF loading and processing"""
     
@@ -365,17 +592,14 @@ class DocumentProcessor:
         st.success(f"Vectorstore created successfully with {len(text_chunks)} chunks!")
         return db
 
-
-
-class RAGChatbot:
-    """Main RAG chatbot class"""
+class MentalHealthCounselor:
+    """Mental Health RAG counselor class"""
     
     def __init__(self):
         self.vectorstore = None
         self.qa_chain = None
         self.setup_chain()
 
-    
     @st.cache_resource
     def get_vectorstore(_self):
         """Load vectorstore with caching"""
@@ -402,15 +626,12 @@ class RAGChatbot:
             return
         
         prompt = PromptTemplate(
-            template=RAG_SYSTEM_PROMPT, 
+            template=COUNSELOR_SYSTEM_PROMPT, 
             input_variables=["context", "question"]
         )
         
-        # Setup Gemini LLM
         try:
-            # Get model from session state or default
             model_name = getattr(st.session_state, 'selected_model', 'gemini-2.0-flash')
-            # Use st.secrets to retrieve the API key securely
             google_api_key = st.secrets.get("GOOGLE_API_KEY")
 
             if not google_api_key:
@@ -419,7 +640,7 @@ class RAGChatbot:
 
             llm = ChatGoogleGenerativeAI(
                 model=model_name,
-                temperature=0.0,
+                temperature=0.3,  # Slightly more creative for counseling
                 google_api_key=google_api_key
             )
             
@@ -435,32 +656,30 @@ class RAGChatbot:
             st.error(f"Error setting up Gemini API: {str(e)}")
     
     def get_response(self, query):
-        """Get response from QA chain"""
+        """Get empathetic response from QA chain"""
         if self.qa_chain is None:
-            return "Sorry, the chatbot is not properly initialized. Please check your setup.", []
+            return "I'm here to listen and support you. It seems there might be a technical issue right now, but please know that your feelings are valid and there are people who want to help.", []
         
         try:
             response = self.qa_chain.invoke({'query': query})
             return response["result"], response["source_documents"]
         except Exception as e:
-            return f"Error generating response: {str(e)}", []
-
+            return f"I'm experiencing some technical difficulties, but I want you to know that what you're feeling matters. Please consider reaching out to one of our campus counselors for immediate support.", []
 
 class VisionProcessor:
-    """Handles image analysis and vision processing"""
+    """Handles emotional analysis of visual content"""
 
     def __init__(self, groq_api_key, elevenlabs_api_key=None):
-        # Pass keys from the main function
         self.groq_api_key = groq_api_key
         self.elevenlabs_api_key = elevenlabs_api_key
     
-    def analyze_image_with_text(self, image_path, user_query=""):
-        """Analyze image with optional user query"""
+    def analyze_emotional_content(self, image_path, user_context=""):
+        """Analyze emotional content in uploaded images"""
         try:
             encoded_image = encode_image(image_path)
-            full_query = VISION_SYSTEM_PROMPT
-            if user_query:
-                full_query += f"\n\nUser's specific question: {user_query}"
+            full_query = VISION_COUNSELOR_PROMPT
+            if user_context:
+                full_query += f"\n\nStudent's context: {user_context}"
             
             response = analyze_image_with_query(
                 query=full_query,
@@ -470,10 +689,10 @@ class VisionProcessor:
             )
             return response
         except Exception as e:
-            return f"Error analyzing image: {str(e)}"
+            return f"I'm having trouble analyzing the image right now, but I want you to know that I'm here to listen. Sometimes technical issues happen, but your feelings and experiences are always valid. Would you like to tell me about what you wanted to share instead?"
     
-    def generate_audio_response(self, text, use_elevenlabs=False):
-        """Generate audio response from text"""
+    def generate_calming_audio(self, text, use_elevenlabs=False):
+        """Generate calming audio response"""
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
                 output_path = temp_audio.name
@@ -481,12 +700,130 @@ class VisionProcessor:
             if use_elevenlabs and self.elevenlabs_api_key:
                 text_to_speech_with_elevenlabs(text, output_path, self.elevenlabs_api_key)
             else:
-                text_to_speech_with_gtts(text, output_path)
+                text_to_speech_with_gtts(text, output_path, slow_speed=True)
             
             return output_path
         except Exception as e:
             st.error(f"Error generating audio: {e}")
             return None
+
+def create_screening_interface(test_type):
+    """Create interface for mental health screening tests"""
+    
+    if test_type == "PHQ-9":
+        questions = PHQ9_QUESTIONS
+        options = RESPONSE_OPTIONS
+        st.subheader("📋 PHQ-9 Depression Screening")
+        st.write("*This questionnaire helps assess depression symptoms over the past 2 weeks.*")
+        
+    elif test_type == "GAD-7":
+        questions = GAD7_QUESTIONS
+        options = RESPONSE_OPTIONS
+        st.subheader("📋 GAD-7 Anxiety Screening")
+        st.write("*This questionnaire helps assess anxiety symptoms over the past 2 weeks.*")
+        
+    elif test_type == "GHQ-12":
+        questions = GHQ12_QUESTIONS
+        options = GHQ_RESPONSE_OPTIONS
+        st.subheader("📋 GHQ-12 General Health Screening")
+        st.write("*This questionnaire assesses your recent psychological wellbeing.*")
+    
+    responses = []
+    
+    with st.form(f"{test_type}_form"):
+        st.write("*Please answer honestly. Your responses are confidential and will help us understand how to support you better.*")
+        
+        for i, question in enumerate(questions):
+            response = st.radio(
+                question,
+                options=list(range(len(options))),
+                format_func=lambda x: options[x],
+                key=f"{test_type}_{i}",
+                horizontal=True
+            )
+            responses.append(response)
+        
+        submitted = st.form_submit_button("Submit Assessment")
+        
+        if submitted:
+            if test_type == "PHQ-9":
+                score, severity = calculate_phq9_score(responses)
+                st.session_state[f'{test_type.lower()}_results'] = {
+                    'score': score,
+                    'severity': severity,
+                    'responses': responses
+                }
+            elif test_type == "GAD-7":
+                score, severity = calculate_gad7_score(responses)
+                st.session_state[f'{test_type.lower()}_results'] = {
+                    'score': score,
+                    'severity': severity,
+                    'responses': responses
+                }
+            elif test_type == "GHQ-12":
+                score, severity = calculate_ghq12_score(responses)
+                st.session_state[f'{test_type.lower()}_results'] = {
+                    'score': score,
+                    'severity': severity,
+                    'responses': responses
+                }
+            
+            st.rerun()
+
+def display_assessment_results():
+    """Display assessment results with empathetic interpretation"""
+    results = {}
+    
+    # Collect all assessment results
+    for test in ['phq-9', 'gad-7', 'ghq-12']:
+        if f'{test}_results' in st.session_state:
+            results[test.replace('-', '')] = st.session_state[f'{test}_results']
+    
+    if not results:
+        return None
+    
+    st.subheader("📊 Your Assessment Results")
+    
+    # Display results with empathetic framing
+    for test_name, result in results.items():
+        score = result['score']
+        severity = result['severity']
+        
+        st.write(f"**{test_name.upper()} Results:**")
+        st.write(f"Score: {score} - {severity}")
+        
+        # Provide empathetic interpretation
+        if "severe" in severity.lower():
+            st.warning("💙 Your results suggest you might be experiencing significant distress. Please know that you're not alone, and seeking support is a sign of strength. I'd recommend speaking with one of our professional counselors.")
+        elif "moderate" in severity.lower():
+            st.info("💙 Your results indicate you might be experiencing some challenges. It's completely normal to go through difficult times, and there are effective ways to help you feel better.")
+        else:
+            st.success("💙 Your results suggest you're managing relatively well, though everyone can benefit from support and self-care strategies.")
+        
+        st.markdown("---")
+    
+    return results
+
+def generate_relaxation_audio(script_type, use_elevenlabs=False, elevenlabs_api_key=None):
+    """Generate guided relaxation audio"""
+    if script_type not in RELAXATION_SCRIPTS:
+        return None
+    
+    script = RELAXATION_SCRIPTS[script_type]
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+            output_path = temp_audio.name
+        
+        if use_elevenlabs and elevenlabs_api_key:
+            text_to_speech_with_elevenlabs(script, output_path, elevenlabs_api_key)
+        else:
+            text_to_speech_with_gtts(script, output_path, slow_speed=True)
+        
+        return output_path
+    except Exception as e:
+        st.error(f"Error generating relaxation audio: {e}")
+        return None
 
 def check_voice_input():
     """Check for voice input from session storage"""
@@ -502,49 +839,78 @@ def check_voice_input():
     """
     return components.html(voice_input_js, height=0)
 
+def detect_crisis_language(text):
+    """Detect crisis or emergency language in user input"""
+    crisis_keywords = [
+        "suicide", "kill myself", "end my life", "want to die", "hurt myself", 
+        "no point living", "better off dead", "can't go on", "end it all",
+        "hopeless", "worthless", "nobody cares", "give up"
+    ]
+    
+    text_lower = text.lower()
+    crisis_detected = any(keyword in text_lower for keyword in crisis_keywords)
+    
+    return crisis_detected
+
+def generate_crisis_response():
+    """Generate immediate crisis support response"""
+    return """
+    🚨 **I'm really concerned about you right now, and I want you to know that your life has value and meaning.**
+    
+    **Immediate Support:**
+    - **Emergency:** Call 112 or go to your nearest emergency room
+    - **Crisis Helpline:** Call 1860-2662-345 (iCALL)
+    - **Campus Emergency:** Contact campus security immediately
+    
+    **Please reach out to Dr. Farah Qureshi immediately:**
+    - Phone: +91-98012-33445
+    - She specializes in psychiatric emergencies and is available for crisis intervention
+    
+    You don't have to face this alone. There are people who care about you and want to help. Please reach out to someone right now - a friend, family member, counselor, or crisis helpline.
+    
+    Your feelings are temporary, but your life is precious. 💙
+    """
+
 def main():
     st.set_page_config(
-        page_title="Unified Medical AI Assistant",
-        page_icon="🩺",
+        page_title="Student Mental Health AI Counselor",
+        page_icon="🧠💙",
         layout="wide"
     )
     
-    st.title("🩺 Unified Medical AI Assistant - RAG + Vision + Voice")
-    st.markdown("### 🤖 Smart routing: Text/Voice → RAG | Images → Vision Analysis")
+    st.title("🧠💙 Student Mental Health AI Counselor")
+    st.markdown("### 🤝 A safe space for emotional support, guidance, and mental health resources")
     st.markdown("---")
     
     # Sidebar for configuration
     with st.sidebar:
-        st.header("⚙ Configuration")
+        st.header("⚙ Configuration & Resources")
         
         # API Keys
         st.subheader("🔑 API Keys")
-        
-        # Retrieve keys from Streamlit's secrets for display and use
         google_api_key = st.secrets.get("GOOGLE_API_KEY")
         groq_api_key = st.secrets.get("GROQ_API_KEY")
         elevenlabs_api_key = st.secrets.get("ELEVENLABS_API_KEY")
         
-        # These text inputs are for display only, to show users if the keys are set
         st.text_input(
             "Google API Key (Gemini):",
-            value=google_api_key,
+            value="Set in Streamlit Secrets" if google_api_key else "",
             type="password",
-            help="Add this key to Streamlit Cloud Secrets"
+            disabled=True
         )
         
         st.text_input(
             "GROQ API Key:",
-            value=groq_api_key,
+            value="Set in Streamlit Secrets" if groq_api_key else "",
             type="password",
-            help="Add this key to Streamlit Cloud Secrets"
+            disabled=True
         )
         
         st.text_input(
             "ElevenLabs API Key (Optional):",
-            value=elevenlabs_api_key,
+            value="Set in Streamlit Secrets" if elevenlabs_api_key else "",
             type="password",
-            help="Add this key to Streamlit Cloud Secrets"
+            disabled=True
         )
         
         use_elevenlabs = st.checkbox(
@@ -555,21 +921,21 @@ def main():
         
         st.markdown("---")
         
-        # RAG Configuration
-        st.subheader("📚 RAG Configuration")
+        # Mental Health Resources
+        st.subheader("🧠 Mental Health Database")
         vectorstore_exists = os.path.exists(DB_FAISS_PATH)
         
         if vectorstore_exists:
-            st.success("✅ Vectorstore loaded successfully!")
+            st.success("✅ Mental health knowledge base loaded!")
         else:
-            st.warning("⚠ No vectorstore found. Please process documents first.")
+            st.warning("⚠ Please load mental health resources (Gale Encyclopedia of Mental Health PDFs)")
         
-        if st.button("🔄 Process PDF Documents"):
-            with st.spinner("Processing documents..."):
+        if st.button("📚 Process Mental Health PDFs"):
+            with st.spinner("Processing mental health resources..."):
                 documents = DocumentProcessor.load_pdf_files(DATA_PATH)
                 
                 if not documents:
-                    st.error("No PDF files found in the data directory!")
+                    st.error("No PDF files found! Please add Gale Encyclopedia of Mental Health PDFs to the data directory.")
                 else:
                     text_chunks = DocumentProcessor.create_chunks(documents)
                     DocumentProcessor.create_vectorstore(text_chunks)
@@ -587,58 +953,57 @@ def main():
             options=list(model_options.keys())
         )
         
-        # Store selected model in session state
         if 'selected_model' not in st.session_state:
             st.session_state.selected_model = model_options[selected_model]
         
         if st.session_state.selected_model != model_options[selected_model]:
             st.session_state.selected_model = model_options[selected_model]
-            if 'rag_chatbot' in st.session_state:
-                del st.session_state.rag_chatbot
+            if 'counselor' in st.session_state:
+                del st.session_state.counselor
         
         st.markdown("---")
-        st.subheader("ℹ How It Works")
-        st.markdown("""
-        *🎯 Smart Routing:*
-        - *Upload Image* → Vision Analysis (GROQ)
-        - *Text/Voice Input* → RAG Chatbot (Gemini)
         
-        *📋 Setup:*
-        1. Add API keys above
-        2. Process PDF documents for RAG
-        3. Use voice, text, or images to interact
+        # Campus Counselors
+        st.subheader("👥 Campus Counselors")
+        st.markdown("*Our professional counselors are here for you:*")
+        
+        for key, counselor in COUNSELORS.items():
+            with st.expander(f"🧑‍⚕️ {counselor['name']}"):
+                st.write(f"**📞 Phone:** {counselor['phone']}")
+                st.write(f"**🎓 Qualification:** {counselor['qualification']}")
+                st.write(f"**🔍 Expertise:** {', '.join(counselor['expertise'])}")
+                st.write(f"**💬 Style:** {counselor['style']}")
+                st.write(f"**🎯 Best for:** {counselor['focus']}")
+        
+        st.markdown("---")
+        st.subheader("ℹ How This Works")
+        st.markdown("""
+        **🎯 Smart Mental Health Support:**
+        - **Chat/Voice** → AI Counselor (empathetic responses)
+        - **Images** → Emotional content analysis
+        - **Assessments** → Standardized mental health screening
+        - **Crisis Detection** → Immediate professional referral
+        
+        **🔒 Your privacy matters:**
+        - Confidential conversations
+        - No data stored permanently
+        - Professional referrals when needed
         """)
     
     # Check API keys
     if not google_api_key:
-        st.error("Please provide your Google API key in the Streamlit Cloud secrets for RAG functionality.")
+        st.error("Please provide your Google API key in Streamlit secrets for the counselor functionality.")
     
     if not groq_api_key:
-        st.error("Please provide your GROQ API key in the Streamlit Cloud secrets for vision analysis.")
+        st.error("Please provide your GROQ API key in Streamlit secrets for image analysis.")
     
-    # Main interface
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        st.header("🎤 Voice Input")
-        components.html(create_voice_input_component(), height=280)
-    
-    with col2:
-        st.header("📸 Image Upload")
-        uploaded_image = st.file_uploader(
-            "Upload medical image for analysis", 
-            type=['png', 'jpg', 'jpeg'],
-            help="Upload triggers Vision Analysis (bypasses RAG)"
-        )
-        
-        if uploaded_image:
-            st.image(uploaded_image, caption="Uploaded Image", use_container_width=True)
+    # Main interface tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat Support", "📋 Mental Health Screening", "🧘 Guided Relaxation", "📸 Visual Expression"])
     
     # Initialize components
-    if google_api_key and 'rag_chatbot' not in st.session_state:
-        vectorstore_exists = os.path.exists(DB_FAISS_PATH)
+    if google_api_key and 'counselor' not in st.session_state:
         if vectorstore_exists:
-            st.session_state.rag_chatbot = RAGChatbot()
+            st.session_state.counselor = MentalHealthCounselor()
     
     if groq_api_key and 'vision_processor' not in st.session_state:
         st.session_state.vision_processor = VisionProcessor(groq_api_key, elevenlabs_api_key)
@@ -647,141 +1012,279 @@ def main():
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     
-    # Check for voice input
-    voice_input = None
-    try:
-        if st.button("🔄 Check Voice Input", help="Click to check if voice input is available"):
-            pass
-    except:
-        pass
-    
-    st.markdown("---")
-    st.header("💬 Chat Interface")
-    
-    # Display chat messages
-    for message in st.session_state.messages:
-        with st.chat_message(message['role']):
-            if message.get('type') == 'image_analysis':
-                st.markdown("🖼 *Image Analysis Result:*")
-            st.markdown(message['content'])
-            
-            # Display audio if available
-            if message.get('audio_path') and os.path.exists(message['audio_path']):
-                st.audio(message['audio_path'], format="audio/mp3")
-    
-    # Process uploaded image immediately
-    if uploaded_image and groq_api_key:
-        st.markdown("### 🔍 Processing Image...")
+    with tab1:
+        st.header("💬 Supportive Chat & Voice")
         
-        with st.spinner("Analyzing image..."):
-            try:
-                # Save uploaded image to temporary file
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_img:
-                    temp_img.write(uploaded_image.read())
-                    temp_img_path = temp_img.name
-                
-                # Analyze image (Vision path - bypasses RAG)
-                vision_response = st.session_state.vision_processor.analyze_image_with_text(temp_img_path)
-                
-                # Generate audio response
-                audio_path = None
-                if use_elevenlabs:
-                    audio_path = st.session_state.vision_processor.generate_audio_response(
-                        vision_response, use_elevenlabs=True
-                    )
-                else:
-                    audio_path = st.session_state.vision_processor.generate_audio_response(
-                        vision_response, use_elevenlabs=False
-                    )
-                
-                # Add to chat
+        # Voice input section
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.subheader("🎤 Voice Input")
+            components.html(create_voice_input_component(), height=280)
+        
+        with col2:
+            st.subheader("💡 Quick Support")
+            if st.button("😰 I'm feeling anxious"):
                 st.session_state.messages.append({
                     'role': 'user',
-                    'content': f"📸 Uploaded image: {uploaded_image.name}",
-                    'type': 'image_upload'
+                    'content': "I'm feeling really anxious right now and I don't know what to do."
                 })
+                st.rerun()
+            
+            if st.button("😔 I'm feeling down"):
+                st.session_state.messages.append({
+                    'role': 'user',
+                    'content': "I've been feeling really down lately and nothing seems to help."
+                })
+                st.rerun()
+            
+            if st.button("😵 I'm overwhelmed"):
+                st.session_state.messages.append({
+                    'role': 'user',
+                    'content': "I'm feeling completely overwhelmed with everything going on."
+                })
+                st.rerun()
+            
+            if st.button("😟 I need someone to talk to"):
+                st.session_state.messages.append({
+                    'role': 'user',
+                    'content': "I just need someone to talk to right now. I'm not feeling great."
+                })
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # Display chat messages
+        for message in st.session_state.messages:
+            with st.chat_message(message['role']):
+                if message.get('type') == 'crisis_response':
+                    st.error("🚨 **Crisis Support Needed**")
+                elif message.get('type') == 'counselor_recommendation':
+                    st.info("👥 **Counselor Recommendation**")
+                elif message.get('type') == 'emotional_analysis':
+                    st.info("🖼 **Emotional Expression Analysis**")
                 
+                st.markdown(message['content'])
+                
+                # Display audio if available
+                if message.get('audio_path') and os.path.exists(message['audio_path']):
+                    st.audio(message['audio_path'], format="audio/mp3")
+        
+        # Chat input
+        if prompt := st.chat_input("Share what's on your mind... I'm here to listen 💙"):
+            # Check for crisis language first
+            if detect_crisis_language(prompt):
+                st.session_state.messages.append({'role': 'user', 'content': prompt})
+                
+                crisis_response = generate_crisis_response()
                 st.session_state.messages.append({
                     'role': 'assistant',
-                    'content': vision_response,
-                    'type': 'image_analysis',
-                    'audio_path': audio_path
+                    'content': crisis_response,
+                    'type': 'crisis_response'
                 })
-                
-                # Clean up temp file
-                os.unlink(temp_img_path)
-                
-                # Reset uploaded image to prevent reprocessing
-                st.session_state.uploaded_image_processed = True
-                
-            except Exception as e:
-                st.error(f"Error processing image: {str(e)}")
+                st.rerun()
+            
+            # Add user message
+            st.session_state.messages.append({'role': 'user', 'content': prompt})
+            
+            with st.chat_message('user'):
+                st.markdown(prompt)
+            
+            # Process with Mental Health Counselor
+            if 'counselor' in st.session_state and vectorstore_exists:
+                with st.chat_message('assistant'):
+                    with st.spinner("Listening and reflecting on what you've shared..."):
+                        result, source_docs = st.session_state.counselor.get_response(prompt)
+                        
+                        st.markdown(result)
+                        
+                        # Generate calming audio response
+                        if 'vision_processor' in st.session_state:
+                            audio_path = st.session_state.vision_processor.generate_calming_audio(
+                                result, use_elevenlabs
+                            )
+                            if audio_path:
+                                st.audio(audio_path, format="audio/mp3")
+                        
+                        # Check if counselor recommendation is needed
+                        assessment_results = {}
+                        for test in ['phq-9', 'gad-7', 'ghq-12']:
+                            if f'{test}_results' in st.session_state:
+                                assessment_results[test.replace('-', '')] = st.session_state[f'{test}_results']
+                        
+                        counselor_type = recommend_counselor(assessment_results, prompt)
+                        recommended_counselor = COUNSELORS[counselor_type]
+                        
+                        # Show counselor recommendation
+                        with st.expander("🤝 Professional Support Available"):
+                            st.markdown(f"**Based on what you've shared, I think {recommended_counselor['name']} might be a great fit for you:**")
+                            st.markdown(f"📞 **Phone:** {recommended_counselor['phone']}")
+                            st.markdown(f"🎯 **They specialize in:** {', '.join(recommended_counselor['expertise'])}")
+                            st.markdown(f"💭 **Their approach:** {recommended_counselor['style']}")
+                            st.markdown(f"✨ **Best for:** {recommended_counselor['focus']}")
+                        
+                        st.session_state.messages.append({
+                            'role': 'assistant',
+                            'content': result,
+                            'type': 'counselor_response',
+                            'audio_path': audio_path if 'audio_path' in locals() else None,
+                            'recommended_counselor': recommended_counselor
+                        })
+            else:
+                st.error("The counselor support system isn't available right now, but please know that your feelings are valid. Consider reaching out to one of our campus counselors directly.")
     
-    # Chat input for text/voice
-    if prompt := st.chat_input("Ask medical questions (text input) or use voice input above..."):
-        # Add user message
-        st.session_state.messages.append({'role': 'user', 'content': prompt})
+    with tab2:
+        st.header("📋 Mental Health Screening")
+        st.write("*These confidential assessments can help you understand your mental health better and guide you to appropriate support.*")
         
-        with st.chat_message('user'):
-            st.markdown(prompt)
+        screening_type = st.selectbox(
+            "Choose a screening assessment:",
+            ["Select an assessment...", "PHQ-9 (Depression)", "GAD-7 (Anxiety)", "GHQ-12 (General Mental Health)"]
+        )
         
-        # Process with RAG (text input path)
-        if 'rag_chatbot' in st.session_state and vectorstore_exists:
-            with st.chat_message('assistant'):
-                with st.spinner("Analyzing medical information..."):
-                    result, source_docs = st.session_state.rag_chatbot.get_response(prompt)
-                    
-                    # Display result
-                    st.markdown(result)
-                    
-                    # Display source documents if available
-                    if source_docs:
-                        with st.expander("📄 Source Documents"):
-                            for i, doc in enumerate(source_docs, 1):
-                                st.markdown(f"*Source {i}:*")
-                                st.text(doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content)
-                                if hasattr(doc, 'metadata') and doc.metadata:
-                                    st.json(doc.metadata)
-                                st.markdown("---")
-                    
-                    # Prepare content for session state
-                    content_with_sources = result
-                    if source_docs:
-                        content_with_sources += f"\n\n*Sources:* {len(source_docs)} document(s) referenced"
-                    
-                    st.session_state.messages.append({
-                        'role': 'assistant', 
-                        'content': content_with_sources,
-                        'type': 'rag_response'
-                    })
-        else:
-            st.error("RAG chatbot not available. Please check your configuration and ensure documents are processed.")
+        if screening_type != "Select an assessment...":
+            test_name = screening_type.split(" ")[0]
+            create_screening_interface(test_name)
+        
+        # Display results if available
+        results = display_assessment_results()
+        
+        if results:
+            # Generate counselor recommendation based on results
+            counselor_type = recommend_counselor(results)
+            recommended_counselor = COUNSELORS[counselor_type]
+            
+            st.subheader("🤝 Recommended Support")
+            st.info(f"**Based on your assessment, I recommend connecting with {recommended_counselor['name']}:**")
+            st.write(f"📞 **Phone:** {recommended_counselor['phone']}")
+            st.write(f"🎯 **Specializes in:** {', '.join(recommended_counselor['expertise'])}")
+            st.write(f"💭 **Counseling style:** {recommended_counselor['style']}")
+            st.write(f"✨ **Best for students with:** {recommended_counselor['focus']}")
+            
+            st.session_state.messages.append({
+                'role': 'assistant',
+                'content': f"Based on your recent assessment, I think it would be helpful for you to connect with {recommended_counselor['name']}. They have experience with exactly the kind of challenges you're facing, and their approach might be really beneficial for you.",
+                'type': 'counselor_recommendation',
+                'recommended_counselor': recommended_counselor
+            })
     
-    # Instructions
-    st.markdown("---")
-    st.info("""
-    *🎯 Smart Usage Guide:*
+    with tab3:
+        st.header("🧘 Guided Relaxation & Mindfulness")
+        st.write("*Take a few minutes for yourself with these calming exercises.*")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("🫁 Breathing Exercise")
+            st.write("*4-7-8 breathing technique for immediate calm*")
+            if st.button("🎧 Start Breathing Exercise"):
+                audio_path = generate_relaxation_audio("breathing", use_elevenlabs, elevenlabs_api_key)
+                if audio_path:
+                    st.audio(audio_path, format="audio/mp3")
+                    st.success("💙 Take your time with this exercise. Breathe at your own pace.")
+        
+        with col2:
+            st.subheader("🧠 Mindfulness")
+            st.write("*5-4-3-2-1 grounding technique*")
+            if st.button("🎧 Start Mindfulness Exercise"):
+                audio_path = generate_relaxation_audio("mindfulness", use_elevenlabs, elevenlabs_api_key)
+                if audio_path:
+                    st.audio(audio_path, format="audio/mp3")
+                    st.success("💙 Notice the present moment without judgment.")
+        
+        with col3:
+            st.subheader("😌 Progressive Relaxation")
+            st.write("*Full body tension release*")
+            if st.button("🎧 Start Relaxation Exercise"):
+                audio_path = generate_relaxation_audio("progressive_relaxation", use_elevenlabs, elevenlabs_api_key)
+                if audio_path:
+                    st.audio(audio_path, format="audio/mp3")
+                    st.success("💙 Let your body find its natural state of relaxation.")
+        
+        st.markdown("---")
+        st.info("💡 **Tip:** Regular practice of these techniques can help build resilience against stress and anxiety. Even 5 minutes a day can make a difference!")
     
-    *For Vision Analysis (Image + AI Doctor):*
-    - Upload any medical image above
-    - System automatically uses GROQ vision model
-    - Get instant AI doctor analysis with voice response
-    
-    *For RAG Chatbot (Text + Documents):*
-    - Type questions in the chat or use voice input
-    - System searches your uploaded PDF documents
-    - Get comprehensive answers from your medical database
-    
-    *Voice Input:*
-    - Click 🎤 "Start Recording" → Speak → "Stop Recording" → "Send to Chat"
-    - Works with both RAG and Vision modes
-    """)
+    with tab4:
+        st.header("📸 Visual Expression Analysis")
+        st.write("*Sometimes it's easier to express feelings through images, drawings, or journal entries. Upload anything that represents how you're feeling.*")
+        
+        uploaded_image = st.file_uploader(
+            "Share your visual expression",
+            type=['png', 'jpg', 'jpeg'],
+            help="This could be artwork, journal pages, photos that represent your mood, or anything visual you'd like to share"
+        )
+        
+        if uploaded_image:
+            col1, col2 = st.columns([1, 1])
+            
+            with col1:
+                st.image(uploaded_image, caption="Your Visual Expression", use_container_width=True)
+            
+            with col2:
+                user_context = st.text_area(
+                    "Tell me about this image (optional):",
+                    placeholder="What were you feeling when you created/took this? What does it represent to you?",
+                    height=100
+                )
+                
+                if st.button("🔍 Analyze Expression"):
+                    if 'vision_processor' in st.session_state:
+                        with st.spinner("Understanding your visual expression..."):
+                            try:
+                                # Save uploaded image to temporary file
+                                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_img:
+                                    temp_img.write(uploaded_image.read())
+                                    temp_img_path = temp_img.name
+                                
+                                # Analyze emotional content
+                                analysis = st.session_state.vision_processor.analyze_emotional_content(
+                                    temp_img_path, user_context
+                                )
+                                
+                                # Generate calming audio response
+                                audio_path = st.session_state.vision_processor.generate_calming_audio(
+                                    analysis, use_elevenlabs
+                                )
+                                
+                                # Display results
+                                st.subheader("💙 What I See in Your Expression")
+                                st.markdown(analysis)
+                                
+                                if audio_path:
+                                    st.audio(audio_path, format="audio/mp3")
+                                
+                                # Add to chat history
+                                st.session_state.messages.append({
+                                    'role': 'user',
+                                    'content': f"📸 Shared visual expression: {uploaded_image.name}" + (f" - Context: {user_context}" if user_context else ""),
+                                    'type': 'image_upload'
+                                })
+                                
+                                st.session_state.messages.append({
+                                    'role': 'assistant',
+                                    'content': analysis,
+                                    'type': 'emotional_analysis',
+                                    'audio_path': audio_path
+                                })
+                                
+                                # Clean up temp file
+                                os.unlink(temp_img_path)
+                                
+                            except Exception as e:
+                                st.error(f"I'm having trouble analyzing the image right now, but I want you to know that your expression matters. Would you like to tell me about it instead?")
+                    else:
+                        st.error("Image analysis is not available right now, but your creative expression is valuable. Consider sharing your feelings in the chat instead.")
+        
+        st.markdown("---")
+        st.info("💡 **Remember:** There's no wrong way to express yourself. Your feelings and experiences are valid, whether you share them through words, images, or in any other way.")
     
     # Footer
     st.markdown("---")
     st.markdown(
-        "<div style='text-align: center; color: gray;'>"
-        "⚠ Disclaimer: This is for educational purposes only. Always consult a real healthcare professional for medical advice."
+        "<div style='text-align: center; color: gray; padding: 20px;'>"
+        "💙 <strong>You're not alone.</strong> This AI counselor provides support, but professional counselors are always available for deeper help.<br>"
+        "🔒 <strong>Confidential:</strong> Your conversations here are private and not stored permanently.<br>"
+        "🚨 <strong>Crisis?</strong> Call 112 (Emergency) or 1860-2662-345 (iCALL Crisis Helpline) immediately."
         "</div>", 
         unsafe_allow_html=True
     )
