@@ -1159,13 +1159,18 @@ def main():
             else:
                 st.error("The counselor support system isn't available right now, but please know that your feelings are valid. Consider reaching out to one of our campus counselors directly.")
     
-    with tab2:
-        st.header("📋 Mental Health Screening")
-        st.write("*These confidential assessments can help you understand your mental health better and guide you to appropriate support.*")
-        
-        screening_type = st.selectbox(
-            "Choose a screening assessment:",
-            ["Select an assessment...", "PHQ-9 (Depression)", "GAD-7 (Anxiety)", "GHQ-12 (General Mental Health)"]
+    # Footer with crisis resources (ChatGPT-style)
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #666; padding: 1rem 0; font-size: 0.9rem; line-height: 1.6;'>
+        <strong>💙 You're not alone.</strong> This AI provides support, but professional counselors are available for deeper help.<br>
+        <strong>🔒 Confidential:</strong> Conversations are private and not stored permanently.<br>
+        <strong>🚨 Crisis Support:</strong> Call <strong>112 (Emergency)</strong> or <strong>1860-2662-345 (iCALL)</strong> immediately if you're in crisis.
+    </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()Q-9 (Depression)", "GAD-7 (Anxiety)", "GHQ-12 (General Mental Health)"]
         )
         
         if screening_type != "Select an assessment...":
