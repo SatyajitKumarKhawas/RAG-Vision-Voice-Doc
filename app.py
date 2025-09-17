@@ -1,4 +1,3 @@
-
 import os
 import streamlit as st
 from pathlib import Path
@@ -36,6 +35,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 DATA_PATH = "data/"
 DB_FAISS_PATH = "vectorstore/db_faiss"
 EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_MODEL = "gemini-2.0-flash"
 
 # Updated System prompts for mental health counseling
 COUNSELOR_SYSTEM_PROMPT = """
@@ -220,65 +220,418 @@ RELAXATION_SCRIPTS = {
     """
 }
 
-# Voice input HTML/JS component (same as original)
-def create_voice_input_component():
-    """Create the voice input HTML component"""
+# Custom CSS for modern UI
+def load_custom_css():
+    st.markdown("""
+    <style>
+    /* Global Styles */
+    .main {
+        padding: 0;
+    }
+    
+    /* Navigation Styles */
+    .nav-container {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 1rem;
+        border-radius: 0 0 15px 15px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .nav-title {
+        color: white;
+        font-size: 1.8rem;
+        font-weight: 700;
+        text-align: center;
+        margin: 0;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .nav-subtitle {
+        color: rgba(255, 255, 255, 0.9);
+        text-align: center;
+        margin: 0.5rem 0 1.5rem 0;
+        font-size: 1rem;
+    }
+    
+    .nav-buttons {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+    
+    .nav-button {
+        background: rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 0.7rem 1.2rem;
+        border-radius: 25px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-decoration: none;
+        font-weight: 500;
+        backdrop-filter: blur(10px);
+    }
+    
+    .nav-button:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    
+    .nav-button.active {
+        background: white;
+        color: #667eea;
+        font-weight: 600;
+    }
+    
+    /* Chat Interface Styles */
+    .chat-container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+    }
+    
+    .chat-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    
+    .chat-messages {
+        min-height: 400px;
+        max-height: 600px;
+        overflow-y: auto;
+        padding: 1rem;
+        background: #f8f9fa;
+    }
+    
+    .message {
+        margin: 1rem 0;
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    
+    .message.user {
+        flex-direction: row-reverse;
+    }
+    
+    .message-content {
+        max-width: 70%;
+        padding: 1rem 1.2rem;
+        border-radius: 18px;
+        font-size: 0.95rem;
+        line-height: 1.4;
+    }
+    
+    .message.user .message-content {
+        background: #667eea;
+        color: white;
+        margin-right: 1rem;
+    }
+    
+    .message.assistant .message-content {
+        background: white;
+        color: #333;
+        border: 1px solid #e0e0e0;
+        margin-left: 1rem;
+    }
+    
+    .message-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 0.8rem;
+    }
+    
+    .message.user .message-avatar {
+        background: #667eea;
+        color: white;
+    }
+    
+    .message.assistant .message-avatar {
+        background: #e0e7ff;
+        color: #667eea;
+    }
+    
+    /* Voice Input Styles */
+    .voice-container {
+        background: white;
+        border: 2px dashed #d1d5db;
+        border-radius: 15px;
+        padding: 2rem;
+        text-align: center;
+        margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+    
+    .voice-container:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+    }
+    
+    .voice-button {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 0.8rem 1.5rem;
+        border-radius: 25px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 500;
+        margin: 0.5rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .voice-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+    
+    .voice-button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .voice-transcript {
+        background: #f8f9fa;
+        border: 1px solid #e0e0e0;
+        border-radius: 10px;
+        padding: 1rem;
+        margin: 1rem 0;
+        min-height: 60px;
+        font-style: italic;
+        color: #666;
+    }
+    
+    /* Assessment Styles */
+    .assessment-container {
+        max-width: 900px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+    }
+    
+    .assessment-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 2rem;
+        text-align: center;
+    }
+    
+    .assessment-content {
+        padding: 2rem;
+    }
+    
+    .question-card {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        transition: all 0.3s ease;
+    }
+    
+    .question-card:hover {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        border-color: #667eea;
+    }
+    
+    .question-text {
+        font-size: 1.1rem;
+        font-weight: 500;
+        color: #333;
+        margin-bottom: 1rem;
+    }
+    
+    .response-options {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        justify-content: space-between;
+    }
+    
+    .response-option {
+        flex: 1;
+        min-width: 120px;
+        padding: 0.8rem;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.3s ease;
+        background: white;
+    }
+    
+    .response-option:hover {
+        border-color: #667eea;
+        background: #f0f4ff;
+    }
+    
+    .response-option.selected {
+        border-color: #667eea;
+        background: #667eea;
+        color: white;
+        font-weight: 500;
+    }
+    
+    /* Counselor Cards */
+    .counselor-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+    
+    .counselor-card {
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    
+    .counselor-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.15);
+    }
+    
+    .counselor-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        text-align: center;
+    }
+    
+    .counselor-content {
+        padding: 1.5rem;
+    }
+    
+    .counselor-name {
+        font-size: 1.3rem;
+        font-weight: 700;
+        margin: 0;
+    }
+    
+    .counselor-phone {
+        font-size: 1.1rem;
+        margin: 0.5rem 0;
+        opacity: 0.9;
+    }
+    
+    .counselor-detail {
+        margin: 1rem 0;
+    }
+    
+    .counselor-label {
+        font-weight: 600;
+        color: #667eea;
+        margin-bottom: 0.5rem;
+    }
+    
+    /* Utility Classes */
+    .text-center { text-align: center; }
+    .mb-3 { margin-bottom: 1rem; }
+    .mt-3 { margin-top: 1rem; }
+    .p-3 { padding: 1rem; }
+    
+    /* Responsive Design */
+    @media (max-width: 768px) {
+        .nav-buttons {
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .nav-button {
+            width: 200px;
+        }
+        
+        .message-content {
+            max-width: 85%;
+        }
+        
+        .response-options {
+            flex-direction: column;
+        }
+        
+        .response-option {
+            min-width: auto;
+        }
+    }
+    
+    /* Crisis Alert Styles */
+    .crisis-alert {
+        background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+    }
+    
+    /* Success Alert Styles */
+    .success-alert {
+        background: linear-gradient(135deg, #51cf66 0%, #40c057 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+    }
+    
+    /* Info Alert Styles */
+    .info-alert {
+        background: linear-gradient(135deg, #74b9ff 0%, #0984e3 100%);
+        color: white;
+        padding: 1rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# Voice input HTML/JS component
+def create_modern_voice_input():
+    """Create modern voice input component"""
     voice_html = """
-    <div style="padding: 10px; border: 2px dashed #ccc; border-radius: 10px; margin: 10px 0; text-align: center;">
-        <h4 style="margin-top: 0;">🎤 Voice Input</h4>
-        <button id="startBtn" onclick="startRecording()" style="
-            background-color: #4CAF50; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">🎤 Start Recording</button>
+    <div class="voice-container">
+        <h3 style="margin: 0 0 1rem 0; color: #667eea;">🎤 Voice Input</h3>
         
-        <button id="stopBtn" onclick="stopRecording()" disabled style="
-            background-color: #f44336; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">🛑 Stop Recording</button>
+        <button id="startBtn" onclick="startRecording()" class="voice-button">
+            🎤 Start Recording
+        </button>
         
-        <div id="status" style="margin: 10px; font-weight: bold; color: #666;"></div>
-        <div id="transcript" style="
-            margin: 10px; 
-            padding: 10px; 
-            background-color: #f0f0f0; 
-            border-radius: 5px; 
-            min-height: 40px;
-            font-style: italic;
-        ">Your transcribed text will appear here...</div>
+        <button id="stopBtn" onclick="stopRecording()" disabled class="voice-button" style="background: #ff6b6b;">
+            🛑 Stop Recording
+        </button>
         
-        <button id="sendBtn" onclick="sendToChat()" disabled style="
-            background-color: #2196F3; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">📤 Send to Chat</button>
+        <div id="status" style="margin: 1rem 0; font-weight: 500; color: #666;"></div>
         
-        <button id="clearBtn" onclick="clearTranscript()" style="
-            background-color: #ff9800; 
-            color: white; 
-            padding: 10px 20px; 
-            border: none; 
-            border-radius: 5px; 
-            cursor: pointer;
-            margin: 5px;
-            font-size: 16px;
-        ">🗑 Clear</button>
+        <div id="transcript" class="voice-transcript">
+            Your transcribed text will appear here...
+        </div>
+        
+        <button id="sendBtn" onclick="sendToChat()" disabled class="voice-button" style="background: #51cf66;">
+            📤 Send to Chat
+        </button>
+        
+        <button id="clearBtn" onclick="clearTranscript()" class="voice-button" style="background: #ffa502;">
+            🗑️ Clear
+        </button>
     </div>
 
     <script>
@@ -303,7 +656,7 @@ def create_voice_input_component():
             document.getElementById('startBtn').disabled = true;
             document.getElementById('stopBtn').disabled = false;
             document.getElementById('status').innerHTML = '🔴 Recording... Speak now!';
-            document.getElementById('status').style.color = '#f44336';
+            document.getElementById('status').style.color = '#ff6b6b';
         };
 
         recognition.onresult = function(event) {
@@ -324,7 +677,7 @@ def create_voice_input_component():
 
         recognition.onerror = function(event) {
             document.getElementById('status').innerHTML = '❌ Error: ' + event.error;
-            document.getElementById('status').style.color = '#f44336';
+            document.getElementById('status').style.color = '#ff6b6b';
             resetButtons();
         };
 
@@ -334,14 +687,14 @@ def create_voice_input_component():
             if (finalTranscript.trim() !== '') {
                 document.getElementById('sendBtn').disabled = false;
                 document.getElementById('status').innerHTML = '✅ Recording completed!';
-                document.getElementById('status').style.color = '#4CAF50';
+                document.getElementById('status').style.color = '#51cf66';
             } else {
-                document.getElementById('status').innerHTML = '⚠ No speech detected';
-                document.getElementById('status').style.color = '#ff9800';
+                document.getElementById('status').innerHTML = '⚠️ No speech detected';
+                document.getElementById('status').style.color = '#ffa502';
             }
         };
     } else {
-        document.getElementById('status').innerHTML = '❌ Speech recognition not supported in this browser';
+        document.getElementById('status').innerHTML = '❌ Speech recognition not supported';
         document.getElementById('startBtn').disabled = true;
     }
 
@@ -367,11 +720,13 @@ def create_voice_input_component():
 
     function sendToChat() {
         if (finalTranscript.trim() !== '') {
-            // Store in session storage for Streamlit to pick up
-            parent.sessionStorage.setItem('voice_input', finalTranscript.trim());
+            parent.postMessage({
+                type: 'voice_input',
+                message: finalTranscript.trim()
+            }, '*');
             
             document.getElementById('status').innerHTML = '📤 Sent to chat!';
-            document.getElementById('status').style.color = '#4CAF50';
+            document.getElementById('status').style.color = '#51cf66';
         }
     }
 
@@ -380,11 +735,50 @@ def create_voice_input_component():
         document.getElementById('transcript').innerHTML = 'Your transcribed text will appear here...';
         document.getElementById('sendBtn').disabled = true;
         document.getElementById('status').innerHTML = '';
-        parent.sessionStorage.removeItem('voice_input');
     }
     </script>
     """
     return voice_html
+
+# Navigation component
+def render_navigation():
+    """Render modern navigation"""
+    st.markdown("""
+    <div class="nav-container">
+        <h1 class="nav-title">🧠 Student Mental Health AI Counselor</h1>
+        <p class="nav-subtitle">A safe space for emotional support, guidance, and mental health resources</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Navigation buttons
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        if st.button("💬 RAG Chat Support", use_container_width=True):
+            st.session_state.current_page = "chat"
+            st.rerun()
+    
+    with col2:
+        if st.button("🎨 Visual Chat Support", use_container_width=True):
+            st.session_state.current_page = "visual"
+            st.rerun()
+    
+    with col3:
+        if st.button("📋 Mental Health Screening", use_container_width=True):
+            st.session_state.current_page = "screening"
+            st.rerun()
+    
+    with col4:
+        if st.button("🧘 Guided Relaxation", use_container_width=True):
+            st.session_state.current_page = "relaxation"
+            st.rerun()
+    
+    with col5:
+        if st.button("👥 Campus Counselors", use_container_width=True):
+            st.session_state.current_page = "counselors"
+            st.rerun()
+    
+    st.markdown("---")
 
 # Utility Functions
 @st.cache_data
@@ -441,7 +835,7 @@ def text_to_speech_with_gtts(input_text, output_filepath, slow_speed=True):
     audioobj = gTTS(
         text=input_text,
         lang=language,
-        slow=slow_speed  # Slower for more calming effect
+        slow=slow_speed
     )
     audioobj.save(output_filepath)
     return output_filepath
@@ -451,9 +845,8 @@ def text_to_speech_with_elevenlabs(input_text, output_filepath, api_key):
         from elevenlabs.client import ElevenLabs
         client = ElevenLabs(api_key=api_key)
 
-        # Use a calm, soothing voice
         response = client.text_to_speech.convert(
-            voice_id="Rachel",  # Changed to a calmer voice
+            voice_id="Rachel",
             model_id="eleven_turbo_v2",
             text=input_text
         )
@@ -496,13 +889,11 @@ def calculate_gad7_score(responses):
 
 def calculate_ghq12_score(responses):
     """Calculate GHQ-12 psychological distress score"""
-    # For GHQ-12, responses are scored differently
-    # Better/Same = 0, Less/Much less = 1
     binary_responses = []
     for resp in responses:
-        if resp in [0, 1]:  # Better than usual, Same as usual
+        if resp in [0, 1]:
             binary_responses.append(0)
-        else:  # Less than usual, Much less than usual
+        else:
             binary_responses.append(1)
     
     score = sum(binary_responses)
@@ -547,10 +938,9 @@ def recommend_counselor(assessment_results, user_concerns=""):
         elif phq9_score >= 5 or gad7_score >= 5:
             return "anxiety_depression"
     
-    # Default to general counselor
     return "relationships_stress"
 
-# Document Processing Classes (same as original)
+# Document Processing Classes
 class DocumentProcessor:
     """Handles PDF loading and processing"""
     
@@ -584,7 +974,6 @@ class DocumentProcessor:
         """Create and save FAISS vectorstore"""
         embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL_NAME)
         
-        # Create vectorstore directory if it doesn't exist
         os.makedirs(os.path.dirname(DB_FAISS_PATH), exist_ok=True)
         
         db = FAISS.from_documents(text_chunks, embedding_model)
@@ -632,7 +1021,6 @@ class MentalHealthCounselor:
         )
         
         try:
-            model_name = getattr(st.session_state, 'selected_model', 'gemini-2.0-flash')
             google_api_key = st.secrets.get("GOOGLE_API_KEY")
 
             if not google_api_key:
@@ -640,8 +1028,8 @@ class MentalHealthCounselor:
                 return
 
             llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                temperature=0.3,  # Slightly more creative for counseling
+                model=DEFAULT_MODEL,
+                temperature=0.3,
                 google_api_key=google_api_key
             )
             
@@ -708,138 +1096,6 @@ class VisionProcessor:
             st.error(f"Error generating audio: {e}")
             return None
 
-def create_screening_interface(test_type):
-    """Create interface for mental health screening tests"""
-    
-    if test_type == "PHQ-9":
-        questions = PHQ9_QUESTIONS
-        options = RESPONSE_OPTIONS
-        st.subheader("📋 PHQ-9 Depression Screening")
-        st.write("*This questionnaire helps assess depression symptoms over the past 2 weeks.*")
-        
-    elif test_type == "GAD-7":
-        questions = GAD7_QUESTIONS
-        options = RESPONSE_OPTIONS
-        st.subheader("📋 GAD-7 Anxiety Screening")
-        st.write("*This questionnaire helps assess anxiety symptoms over the past 2 weeks.*")
-        
-    elif test_type == "GHQ-12":
-        questions = GHQ12_QUESTIONS
-        options = GHQ_RESPONSE_OPTIONS
-        st.subheader("📋 GHQ-12 General Health Screening")
-        st.write("*This questionnaire assesses your recent psychological wellbeing.*")
-    
-    responses = []
-    
-    with st.form(f"{test_type}_form"):
-        st.write("*Please answer honestly. Your responses are confidential and will help us understand how to support you better.*")
-        
-        for i, question in enumerate(questions):
-            response = st.radio(
-                question,
-                options=list(range(len(options))),
-                format_func=lambda x: options[x],
-                key=f"{test_type}_{i}",
-                horizontal=True
-            )
-            responses.append(response)
-        
-        submitted = st.form_submit_button("Submit Assessment")
-        
-        if submitted:
-            if test_type == "PHQ-9":
-                score, severity = calculate_phq9_score(responses)
-                st.session_state[f'{test_type.lower()}_results'] = {
-                    'score': score,
-                    'severity': severity,
-                    'responses': responses
-                }
-            elif test_type == "GAD-7":
-                score, severity = calculate_gad7_score(responses)
-                st.session_state[f'{test_type.lower()}_results'] = {
-                    'score': score,
-                    'severity': severity,
-                    'responses': responses
-                }
-            elif test_type == "GHQ-12":
-                score, severity = calculate_ghq12_score(responses)
-                st.session_state[f'{test_type.lower()}_results'] = {
-                    'score': score,
-                    'severity': severity,
-                    'responses': responses
-                }
-            
-            st.rerun()
-
-def display_assessment_results():
-    """Display assessment results with empathetic interpretation"""
-    results = {}
-    
-    # Collect all assessment results
-    for test in ['phq-9', 'gad-7', 'ghq-12']:
-        if f'{test}_results' in st.session_state:
-            results[test.replace('-', '')] = st.session_state[f'{test}_results']
-    
-    if not results:
-        return None
-    
-    st.subheader("📊 Your Assessment Results")
-    
-    # Display results with empathetic framing
-    for test_name, result in results.items():
-        score = result['score']
-        severity = result['severity']
-        
-        st.write(f"**{test_name.upper()} Results:**")
-        st.write(f"Score: {score} - {severity}")
-        
-        # Provide empathetic interpretation
-        if "severe" in severity.lower():
-            st.warning("💙 Your results suggest you might be experiencing significant distress. Please know that you're not alone, and seeking support is a sign of strength. I'd recommend speaking with one of our professional counselors.")
-        elif "moderate" in severity.lower():
-            st.info("💙 Your results indicate you might be experiencing some challenges. It's completely normal to go through difficult times, and there are effective ways to help you feel better.")
-        else:
-            st.success("💙 Your results suggest you're managing relatively well, though everyone can benefit from support and self-care strategies.")
-        
-        st.markdown("---")
-    
-    return results
-
-def generate_relaxation_audio(script_type, use_elevenlabs=False, elevenlabs_api_key=None):
-    """Generate guided relaxation audio"""
-    if script_type not in RELAXATION_SCRIPTS:
-        return None
-    
-    script = RELAXATION_SCRIPTS[script_type]
-    
-    try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-            output_path = temp_audio.name
-        
-        if use_elevenlabs and elevenlabs_api_key:
-            text_to_speech_with_elevenlabs(script, output_path, elevenlabs_api_key)
-        else:
-            text_to_speech_with_gtts(script, output_path, slow_speed=True)
-        
-        return output_path
-    except Exception as e:
-        st.error(f"Error generating relaxation audio: {e}")
-        return None
-
-def check_voice_input():
-    """Check for voice input from session storage"""
-    voice_input_js = """
-    <script>
-    const voiceInput = sessionStorage.getItem('voice_input');
-    if (voiceInput) {
-        sessionStorage.removeItem('voice_input');
-        return voiceInput;
-    }
-    return null;
-    </script>
-    """
-    return components.html(voice_input_js, height=0)
-
 def detect_crisis_language(text):
     """Detect crisis or emergency language in user input"""
     crisis_keywords = [
@@ -872,449 +1128,703 @@ def generate_crisis_response():
     Your feelings are temporary, but your life is precious. 💙
     """
 
-def main():
-    st.set_page_config(
-        page_title="Student Mental Health AI Counselor",
-        page_icon="🧠💙",
-        layout="wide"
-    )
+def generate_relaxation_audio(script_type, use_elevenlabs=False, elevenlabs_api_key=None):
+    """Generate guided relaxation audio"""
+    if script_type not in RELAXATION_SCRIPTS:
+        return None
     
-    st.title("Student Mental Health AI Counselor")
-    st.markdown("### 🤝 A safe space for emotional support, guidance, and mental health resources")
+    script = RELAXATION_SCRIPTS[script_type]
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+            output_path = temp_audio.name
+        
+        if use_elevenlabs and elevenlabs_api_key:
+            text_to_speech_with_elevenlabs(script, output_path, elevenlabs_api_key)
+        else:
+            text_to_speech_with_gtts(script, output_path, slow_speed=True)
+        
+        return output_path
+    except Exception as e:
+        st.error(f"Error generating relaxation audio: {e}")
+        return None
+
+# Page Components
+def render_chat_page():
+    """Render the chat support page"""
+    st.markdown("""
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2 style="margin: 0;">💬 RAG Chat Support</h2>
+            <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">Share your thoughts and feelings. I'm here to listen and support you.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Voice input section
+    col1, col2 = st.columns([3, 2])
+    
+    with col1:
+        # Voice input component
+        components.html(create_modern_voice_input(), height=400)
+    
+    with col2:
+        st.markdown("### Quick Support")
+        if st.button("😰 I'm feeling anxious", use_container_width=True):
+            add_message("user", "I'm feeling really anxious right now and I don't know what to do.")
+            st.rerun()
+        
+        if st.button("😔 I'm feeling down", use_container_width=True):
+            add_message("user", "I've been feeling really down lately and nothing seems to help.")
+            st.rerun()
+        
+        if st.button("😵 I'm overwhelmed", use_container_width=True):
+            add_message("user", "I'm feeling completely overwhelmed with everything going on.")
+            st.rerun()
+        
+        if st.button("😟 I need someone to talk to", use_container_width=True):
+            add_message("user", "I just need someone to talk to right now. I'm not feeling great.")
+            st.rerun()
+    
     st.markdown("---")
     
-    # Sidebar for configuration
-    with st.sidebar:
-        st.header("⚙ Configuration & Resources")
-        
-        # API Keys
-        st.subheader("🔑 API Keys")
-        google_api_key = st.secrets.get("GOOGLE_API_KEY")
-        groq_api_key = st.secrets.get("GROQ_API_KEY")
-        elevenlabs_api_key = st.secrets.get("ELEVENLABS_API_KEY")
-        
-        st.text_input(
-            "Google API Key (Gemini):",
-            value="Set in Streamlit Secrets" if google_api_key else "",
-            type="password",
-            disabled=True
-        )
-        
-        st.text_input(
-            "GROQ API Key:",
-            value="Set in Streamlit Secrets" if groq_api_key else "",
-            type="password",
-            disabled=True
-        )
-        
-        st.text_input(
-            "ElevenLabs API Key (Optional):",
-            value="Set in Streamlit Secrets" if elevenlabs_api_key else "",
-            type="password",
-            disabled=True
-        )
-        
-        use_elevenlabs = st.checkbox(
-            "Use ElevenLabs TTS", 
-            value=bool(elevenlabs_api_key),
-            help="Uncheck to use free gTTS instead"
-        )
-        
-        st.markdown("---")
-        
-        # Mental Health Resources
-        st.subheader("🧠 Mental Health Database")
-        vectorstore_exists = os.path.exists(DB_FAISS_PATH)
-        
-        if vectorstore_exists:
-            st.success("✅ Mental health knowledge base loaded!")
+    # Chat messages display
+    render_chat_messages()
+    
+    # Chat input
+    if prompt := st.chat_input("Share what's on your mind... I'm here to listen 💙"):
+        handle_chat_input(prompt)
+
+def render_chat_messages():
+    """Render chat messages in modern style"""
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    
+    # Display messages
+    for message in st.session_state.messages:
+        if message['role'] == 'user':
+            st.markdown(f"""
+            <div class="message user">
+                <div class="message-avatar">U</div>
+                <div class="message-content">{message['content']}</div>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            st.warning("⚠ Please load mental health resources (Gale Encyclopedia of Mental Health PDFs)")
-        
-        if st.button("📚 Process Mental Health PDFs"):
-            with st.spinner("Processing mental health resources..."):
-                documents = DocumentProcessor.load_pdf_files(DATA_PATH)
-                
-                if not documents:
-                    st.error("No PDF files found! Please add Gale Encyclopedia of Mental Health PDFs to the data directory.")
-                else:
-                    text_chunks = DocumentProcessor.create_chunks(documents)
-                    DocumentProcessor.create_vectorstore(text_chunks)
-                    st.rerun()
-        
-        # Model selection
-        model_options = {
-            "Gemini 2.0 Flash (Recommended)": "gemini-2.0-flash", 
-            "Gemini 2.5 Flash": "gemini-2.5-flash",
-            "Gemini 2.5 Pro": "gemini-2.5-pro"
-        }
-        
-        selected_model = st.selectbox(
-            "Choose Gemini Model:",
-            options=list(model_options.keys())
-        )
-        
-        if 'selected_model' not in st.session_state:
-            st.session_state.selected_model = model_options[selected_model]
-        
-        if st.session_state.selected_model != model_options[selected_model]:
-            st.session_state.selected_model = model_options[selected_model]
-            if 'counselor' in st.session_state:
-                del st.session_state.counselor
-        
-        st.markdown("---")
-        
-        # Campus Counselors
-        st.subheader("👥 Campus Counselors")
-        st.markdown("*Our professional counselors are here for you:*")
-        
-        for key, counselor in COUNSELORS.items():
-            with st.expander(f"🧑‍⚕️ {counselor['name']}"):
-                st.write(f"**📞 Phone:** {counselor['phone']}")
-                st.write(f"**🎓 Qualification:** {counselor['qualification']}")
-                st.write(f"**🔍 Expertise:** {', '.join(counselor['expertise'])}")
-                st.write(f"**💬 Style:** {counselor['style']}")
-                st.write(f"**🎯 Best for:** {counselor['focus']}")
-        
-        st.markdown("---")
-        st.subheader("ℹ How This Works")
+            # Handle different message types
+            if message.get('type') == 'crisis_response':
+                st.markdown(f'<div class="crisis-alert">{message["content"]}</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div class="message assistant">
+                    <div class="message-avatar">AI</div>
+                    <div class="message-content">{message['content']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Display audio if available
+            if message.get('audio_path') and os.path.exists(message['audio_path']):
+                st.audio(message['audio_path'], format="audio/mp3")
+
+def add_message(role, content, message_type=None, audio_path=None):
+    """Add message to chat history"""
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    
+    message = {
+        'role': role,
+        'content': content
+    }
+    
+    if message_type:
+        message['type'] = message_type
+    if audio_path:
+        message['audio_path'] = audio_path
+    
+    st.session_state.messages.append(message)
+
+def handle_chat_input(prompt):
+    """Handle chat input and generate response"""
+    # Check for crisis language first
+    if detect_crisis_language(prompt):
+        add_message('user', prompt)
+        crisis_response = generate_crisis_response()
+        add_message('assistant', crisis_response, 'crisis_response')
+        st.rerun()
+    
+    # Add user message
+    add_message('user', prompt)
+    
+    # Process with Mental Health Counselor
+    if 'counselor' in st.session_state:
+        with st.spinner("Processing your message..."):
+            result, source_docs = st.session_state.counselor.get_response(prompt)
+            
+            # Generate audio response if vision processor available
+            audio_path = None
+            if 'vision_processor' in st.session_state:
+                audio_path = st.session_state.vision_processor.generate_calming_audio(
+                    result, use_elevenlabs=True
+                )
+            
+            add_message('assistant', result, audio_path=audio_path)
+    else:
+        add_message('assistant', "I'm here to support you, but the counseling system isn't fully loaded yet. Your feelings are valid, and I encourage you to reach out to our campus counselors directly.")
+    
+    st.rerun()
+
+def render_screening_page():
+    """Render the mental health screening page"""
+    st.markdown("""
+    <div class="assessment-container">
+        <div class="assessment-header">
+            <h2 style="margin: 0;">📋 Mental Health Screening</h2>
+            <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">Confidential assessments to help understand your mental health and guide you to appropriate support</p>
+        </div>
+        <div class="assessment-content">
+    """, unsafe_allow_html=True)
+    
+    # Assessment selection
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
         st.markdown("""
-        **🎯 Smart Mental Health Support:**
-        - **Chat/Voice** → AI Counselor (empathetic responses)
-        - **Images** → Emotional content analysis
-        - **Assessments** → Standardized mental health screening
-        - **Crisis Detection** → Immediate professional referral
+        <div style="background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin: 1rem 0;">
+            <h3 style="color: #667eea; margin: 0 0 1rem 0;">🫁 Breathing Exercise</h3>
+            <p style="color: #666; margin: 0 0 1.5rem 0;">4-7-8 breathing technique for immediate calm</p>
+        """, unsafe_allow_html=True)
         
-        **🔒 Your privacy matters:**
-        - Confidential conversations
-        - No data stored permanently
-        - Professional referrals when needed
-        """)
+        if st.button("🎧 Start Breathing Exercise", use_container_width=True):
+            audio_path = generate_relaxation_audio("breathing", use_elevenlabs=True, elevenlabs_api_key=st.secrets.get("ELEVENLABS_API_KEY"))
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+                st.markdown('<div class="success-alert">💙 Take your time with this exercise. Breathe at your own pace.</div>', unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
     
-    # Check API keys
-    if not google_api_key:
-        st.error("Please provide your Google API key in Streamlit secrets for the counselor functionality.")
+    with col2:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin: 1rem 0;">
+            <h3 style="color: #667eea; margin: 0 0 1rem 0;">🧠 Mindfulness</h3>
+            <p style="color: #666; margin: 0 0 1.5rem 0;">5-4-3-2-1 grounding technique</p>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🎧 Start Mindfulness Exercise", use_container_width=True):
+            audio_path = generate_relaxation_audio("mindfulness", use_elevenlabs=True, elevenlabs_api_key=st.secrets.get("ELEVENLABS_API_KEY"))
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+                st.markdown('<div class="success-alert">💙 Notice the present moment without judgment.</div>', unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
     
-    if not groq_api_key:
-        st.error("Please provide your GROQ API key in Streamlit secrets for image analysis.")
+    with col3:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin: 1rem 0;">
+            <h3 style="color: #667eea; margin: 0 0 1rem 0;">😌 Progressive Relaxation</h3>
+            <p style="color: #666; margin: 0 0 1.5rem 0;">Full body tension release</p>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🎧 Start Relaxation Exercise", use_container_width=True):
+            audio_path = generate_relaxation_audio("progressive_relaxation", use_elevenlabs=True, elevenlabs_api_key=st.secrets.get("ELEVENLABS_API_KEY"))
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+                st.markdown('<div class="success-alert">💙 Let your body find its natural state of relaxation.</div>', unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
     
-    # Main interface tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat Support", "📋 Mental Health Screening", "🧘 Guided Relaxation", "📸 Visual Expression"])
+    st.markdown("""
+    <div class="info-alert" style="margin: 2rem 0;">
+        <h4 style="margin: 0 0 0.5rem 0;">💡 Tip</h4>
+        <p style="margin: 0;">Regular practice of these techniques can help build resilience against stress and anxiety. Even 5 minutes a day can make a difference!</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+def render_counselors_page():
+    """Render the campus counselors page"""
+    st.markdown("""
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2 style="margin: 0;">👥 Campus Counselors</h2>
+            <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">Our professional counselors are here to support you through any challenges</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Display counselors in a grid
+    st.markdown('<div class="counselor-grid">', unsafe_allow_html=True)
+    
+    for key, counselor in COUNSELORS.items():
+        st.markdown(f"""
+        <div class="counselor-card">
+            <div class="counselor-header">
+                <h3 class="counselor-name">{counselor['name']}</h3>
+                <div class="counselor-phone">{counselor['phone']}</div>
+            </div>
+            <div class="counselor-content">
+                <div class="counselor-detail">
+                    <div class="counselor-label">🎓 Qualification</div>
+                    <div>{counselor['qualification']}</div>
+                </div>
+                
+                <div class="counselor-detail">
+                    <div class="counselor-label">🔍 Expertise</div>
+                    <div>{', '.join(counselor['expertise'])}</div>
+                </div>
+                
+                <div class="counselor-detail">
+                    <div class="counselor-label">💬 Counseling Style</div>
+                    <div>{counselor['style']}</div>
+                </div>
+                
+                <div class="counselor-detail">
+                    <div class="counselor-label">🎯 Best For</div>
+                    <div>{counselor['focus']}</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Emergency contacts
+    st.markdown("""
+    <div class="crisis-alert" style="margin: 2rem 0;">
+        <h4 style="margin: 0 0 1rem 0;">🚨 Emergency Contacts</h4>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+            <div>
+                <strong>Emergency Services</strong><br>
+                📞 112
+            </div>
+            <div>
+                <strong>Crisis Helpline</strong><br>
+                📞 1860-2662-345 (iCALL)
+            </div>
+            <div>
+                <strong>Campus Security</strong><br>
+                📞 Available 24/7
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# Initialize database check
+def initialize_system():
+    """Initialize the mental health system"""
+    # Check if vectorstore exists
+    vectorstore_exists = os.path.exists(DB_FAISS_PATH)
+    
+    # Get API keys
+    google_api_key = st.secrets.get("GOOGLE_API_KEY")
+    groq_api_key = st.secrets.get("GROQ_API_KEY")
+    elevenlabs_api_key = st.secrets.get("ELEVENLABS_API_KEY")
     
     # Initialize components
     if google_api_key and 'counselor' not in st.session_state:
         if vectorstore_exists:
             st.session_state.counselor = MentalHealthCounselor()
+        else:
+            # Show database setup in sidebar
+            with st.sidebar:
+                st.warning("⚠️ Mental Health Database Not Found")
+                st.write("Please load the mental health resources to enable full counseling functionality.")
+                
+                if st.button("📚 Process Mental Health PDFs"):
+                    with st.spinner("Processing mental health resources..."):
+                        documents = DocumentProcessor.load_pdf_files(DATA_PATH)
+                        
+                        if not documents:
+                            st.error("No PDF files found! Please add Gale Encyclopedia of Mental Health PDFs to the data directory.")
+                        else:
+                            text_chunks = DocumentProcessor.create_chunks(documents)
+                            DocumentProcessor.create_vectorstore(text_chunks)
+                            st.rerun()
     
     if groq_api_key and 'vision_processor' not in st.session_state:
         st.session_state.vision_processor = VisionProcessor(groq_api_key, elevenlabs_api_key)
     
-    # Initialize chat messages
+    # Initialize session state
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = 'chat'
+    
     if 'messages' not in st.session_state:
         st.session_state.messages = []
+
+# Handle voice input from JavaScript
+def handle_voice_input():
+    """Handle voice input from the component"""
+    # This would be handled by the JavaScript postMessage in a real implementation
+    # For now, we'll use a simple session state approach
+    pass
+
+def main():
+    st.set_page_config(
+        page_title="Student Mental Health AI Counselor",
+        page_icon="🧠",
+        layout="wide",
+        initial_sidebar_state="collapsed"
+    )
     
-    with tab1:
-        st.header("💬 Supportive Chat & Voice")
-        
-        # Voice input section
-        col1, col2 = st.columns([1, 1])
-        
-        with col1:
-            st.subheader("🎤 Voice Input")
-            components.html(create_voice_input_component(), height=280)
-        
-        with col2:
-            st.subheader("💡 Quick Support")
-            if st.button("😰 I'm feeling anxious"):
-                st.session_state.messages.append({
-                    'role': 'user',
-                    'content': "I'm feeling really anxious right now and I don't know what to do."
-                })
-                st.rerun()
-            
-            if st.button("😔 I'm feeling down"):
-                st.session_state.messages.append({
-                    'role': 'user',
-                    'content': "I've been feeling really down lately and nothing seems to help."
-                })
-                st.rerun()
-            
-            if st.button("😵 I'm overwhelmed"):
-                st.session_state.messages.append({
-                    'role': 'user',
-                    'content': "I'm feeling completely overwhelmed with everything going on."
-                })
-                st.rerun()
-            
-            if st.button("😟 I need someone to talk to"):
-                st.session_state.messages.append({
-                    'role': 'user',
-                    'content': "I just need someone to talk to right now. I'm not feeling great."
-                })
-                st.rerun()
-        
-        st.markdown("---")
-        
-        # Display chat messages
-        for message in st.session_state.messages:
-            with st.chat_message(message['role']):
-                if message.get('type') == 'crisis_response':
-                    st.error("🚨 **Crisis Support Needed**")
-                elif message.get('type') == 'counselor_recommendation':
-                    st.info("👥 **Counselor Recommendation**")
-                elif message.get('type') == 'emotional_analysis':
-                    st.info("🖼 **Emotional Expression Analysis**")
-                
-                st.markdown(message['content'])
-                
-                # Display audio if available
-                if message.get('audio_path') and os.path.exists(message['audio_path']):
-                    st.audio(message['audio_path'], format="audio/mp3")
-        
-        # Chat input
-        if prompt := st.chat_input("Share what's on your mind... I'm here to listen 💙"):
-            # Check for crisis language first
-            if detect_crisis_language(prompt):
-                st.session_state.messages.append({'role': 'user', 'content': prompt})
-                
-                crisis_response = generate_crisis_response()
-                st.session_state.messages.append({
-                    'role': 'assistant',
-                    'content': crisis_response,
-                    'type': 'crisis_response'
-                })
-                st.rerun()
-            
-            # Add user message
-            st.session_state.messages.append({'role': 'user', 'content': prompt})
-            
-            with st.chat_message('user'):
-                st.markdown(prompt)
-            
-            # Process with Mental Health Counselor
-            if 'counselor' in st.session_state and vectorstore_exists:
-                with st.chat_message('assistant'):
-                    with st.spinner("Listening and reflecting on what you've shared..."):
-                        result, source_docs = st.session_state.counselor.get_response(prompt)
-                        
-                        st.markdown(result)
-                        
-                        # Display source documents if available
-                        if source_docs:
-                            with st.expander("📚 Mental Health Knowledge Sources"):
-                                for i, doc in enumerate(source_docs, 1):
-                                    st.markdown(f"**Source {i}:**")
-                                    # Show content preview
-                                    content_preview = doc.page_content[:300] + "..." if len(doc.page_content) > 300 else doc.page_content
-                                    st.text(content_preview)
-                                    
-                                    # Show metadata in formatted way
-                                    if hasattr(doc, 'metadata') and doc.metadata:
-                                        metadata = doc.metadata
-                                        st.json({
-                                            "source": metadata.get('source', 'Unknown'),
-                                            "page": metadata.get('page', 'Unknown'),
-                                            "page_label": metadata.get('page_label', 'Unknown'),
-                                            "total_pages": metadata.get('total_pages', 'Unknown')
-                                        })
-                                    st.markdown("---")
-                        
-                        # Generate calming audio response
-                        if 'vision_processor' in st.session_state:
-                            audio_path = st.session_state.vision_processor.generate_calming_audio(
-                                result, use_elevenlabs
-                            )
-                            if audio_path:
-                                st.audio(audio_path, format="audio/mp3")
-                        
-                        # Check if counselor recommendation is needed
-                        assessment_results = {}
-                        for test in ['phq-9', 'gad-7', 'ghq-12']:
-                            if f'{test}_results' in st.session_state:
-                                assessment_results[test.replace('-', '')] = st.session_state[f'{test}_results']
-                        
-                        counselor_type = recommend_counselor(assessment_results, prompt)
-                        recommended_counselor = COUNSELORS[counselor_type]
-                        
-                        # Show counselor recommendation
-                        with st.expander("🤝 Professional Support Available"):
-                            st.markdown(f"**Based on what you've shared, I think {recommended_counselor['name']} might be a great fit for you:**")
-                            st.markdown(f"📞 **Phone:** {recommended_counselor['phone']}")
-                            st.markdown(f"🎯 **They specialize in:** {', '.join(recommended_counselor['expertise'])}")
-                            st.markdown(f"💭 **Their approach:** {recommended_counselor['style']}")
-                            st.markdown(f"✨ **Best for:** {recommended_counselor['focus']}")
-                        
-                        # Prepare content with sources for session state
-                        content_with_sources = result
-                        if source_docs:
-                            content_with_sources += f"\n\n*Sources:* {len(source_docs)} mental health resource(s) referenced"
-                        
-                        st.session_state.messages.append({
-                            'role': 'assistant',
-                            'content': content_with_sources,
-                            'type': 'counselor_response',
-                            'audio_path': audio_path if 'audio_path' in locals() else None,
-                            'recommended_counselor': recommended_counselor,
-                            'source_docs': source_docs
-                        })
-            else:
-                st.error("The counselor support system isn't available right now, but please know that your feelings are valid. Consider reaching out to one of our campus counselors directly.")
+    # Load custom CSS
+    load_custom_css()
     
-    with tab2:
-        st.header("📋 Mental Health Screening")
-        st.write("*These confidential assessments can help you understand your mental health better and guide you to appropriate support.*")
-        
-        screening_type = st.selectbox(
-            "Choose a screening assessment:",
-            ["Select an assessment...", "PHQ-9 (Depression)", "GAD-7 (Anxiety)", "GHQ-12 (General Mental Health)"]
-        )
-        
-        if screening_type != "Select an assessment...":
-            test_name = screening_type.split(" ")[0]
-            create_screening_interface(test_name)
-        
-        # Display results if available
-        results = display_assessment_results()
-        
-        if results:
-            # Generate counselor recommendation based on results
-            counselor_type = recommend_counselor(results)
-            recommended_counselor = COUNSELORS[counselor_type]
-            
-            st.subheader("🤝 Recommended Support")
-            st.info(f"**Based on your assessment, I recommend connecting with {recommended_counselor['name']}:**")
-            st.write(f"📞 **Phone:** {recommended_counselor['phone']}")
-            st.write(f"🎯 **Specializes in:** {', '.join(recommended_counselor['expertise'])}")
-            st.write(f"💭 **Counseling style:** {recommended_counselor['style']}")
-            st.write(f"✨ **Best for students with:** {recommended_counselor['focus']}")
-            
-            st.session_state.messages.append({
-                'role': 'assistant',
-                'content': f"Based on your recent assessment, I think it would be helpful for you to connect with {recommended_counselor['name']}. They have experience with exactly the kind of challenges you're facing, and their approach might be really beneficial for you.",
-                'type': 'counselor_recommendation',
-                'recommended_counselor': recommended_counselor
-            })
+    # Initialize system
+    initialize_system()
     
-    with tab3:
-        st.header("🧘 Guided Relaxation & Mindfulness")
-        st.write("*Take a few minutes for yourself with these calming exercises.*")
-        
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            st.subheader("🫁 Breathing Exercise")
-            st.write("*4-7-8 breathing technique for immediate calm*")
-            if st.button("🎧 Start Breathing Exercise"):
-                audio_path = generate_relaxation_audio("breathing", use_elevenlabs, elevenlabs_api_key)
-                if audio_path:
-                    st.audio(audio_path, format="audio/mp3")
-                    st.success("💙 Take your time with this exercise. Breathe at your own pace.")
-        
-        with col2:
-            st.subheader("🧠 Mindfulness")
-            st.write("*5-4-3-2-1 grounding technique*")
-            if st.button("🎧 Start Mindfulness Exercise"):
-                audio_path = generate_relaxation_audio("mindfulness", use_elevenlabs, elevenlabs_api_key)
-                if audio_path:
-                    st.audio(audio_path, format="audio/mp3")
-                    st.success("💙 Notice the present moment without judgment.")
-        
-        with col3:
-            st.subheader("😌 Progressive Relaxation")
-            st.write("*Full body tension release*")
-            if st.button("🎧 Start Relaxation Exercise"):
-                audio_path = generate_relaxation_audio("progressive_relaxation", use_elevenlabs, elevenlabs_api_key)
-                if audio_path:
-                    st.audio(audio_path, format="audio/mp3")
-                    st.success("💙 Let your body find its natural state of relaxation.")
-        
-        st.markdown("---")
-        st.info("💡 **Tip:** Regular practice of these techniques can help build resilience against stress and anxiety. Even 5 minutes a day can make a difference!")
+    # Render navigation
+    render_navigation()
     
-    with tab4:
-        st.header("📸 Visual Expression Analysis")
-        st.write("*Sometimes it's easier to express feelings through images, drawings, or journal entries. Upload anything that represents how you're feeling.*")
-        
-        uploaded_image = st.file_uploader(
-            "Share your visual expression",
-            type=['png', 'jpg', 'jpeg'],
-            help="This could be artwork, journal pages, photos that represent your mood, or anything visual you'd like to share"
-        )
-        
-        if uploaded_image:
-            col1, col2 = st.columns([1, 1])
-            
-            with col1:
-                st.image(uploaded_image, caption="Your Visual Expression", use_container_width=True)
-            
-            with col2:
-                user_context = st.text_area(
-                    "Tell me about this image (optional):",
-                    placeholder="What were you feeling when you created/took this? What does it represent to you?",
-                    height=100
-                )
-                
-                if st.button("🔍 Analyze Expression"):
-                    if 'vision_processor' in st.session_state:
-                        with st.spinner("Understanding your visual expression..."):
-                            try:
-                                # Save uploaded image to temporary file
-                                with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_img:
-                                    temp_img.write(uploaded_image.read())
-                                    temp_img_path = temp_img.name
-                                
-                                # Analyze emotional content
-                                analysis = st.session_state.vision_processor.analyze_emotional_content(
-                                    temp_img_path, user_context
-                                )
-                                
-                                # Generate calming audio response
-                                audio_path = st.session_state.vision_processor.generate_calming_audio(
-                                    analysis, use_elevenlabs
-                                )
-                                
-                                # Display results
-                                st.subheader("💙 What I See in Your Expression")
-                                st.markdown(analysis)
-                                
-                                if audio_path:
-                                    st.audio(audio_path, format="audio/mp3")
-                                
-                                # Add to chat history
-                                st.session_state.messages.append({
-                                    'role': 'user',
-                                    'content': f"📸 Shared visual expression: {uploaded_image.name}" + (f" - Context: {user_context}" if user_context else ""),
-                                    'type': 'image_upload'
-                                })
-                                
-                                st.session_state.messages.append({
-                                    'role': 'assistant',
-                                    'content': analysis,
-                                    'type': 'emotional_analysis',
-                                    'audio_path': audio_path
-                                })
-                                
-                                # Clean up temp file
-                                os.unlink(temp_img_path)
-                                
-                            except Exception as e:
-                                st.error(f"I'm having trouble analyzing the image right now, but I want you to know that your expression matters. Would you like to tell me about it instead?")
-                    else:
-                        st.error("Image analysis is not available right now, but your creative expression is valuable. Consider sharing your feelings in the chat instead.")
-        
-        st.markdown("---")
-        st.info("💡 **Remember:** There's no wrong way to express yourself. Your feelings and experiences are valid, whether you share them through words, images, or in any other way.")
+    # Route to appropriate page
+    current_page = st.session_state.get('current_page', 'chat')
+    
+    if current_page == 'chat':
+        render_chat_page()
+    elif current_page == 'visual':
+        render_visual_page()
+    elif current_page == 'screening':
+        render_screening_page()
+    elif current_page == 'relaxation':
+        render_relaxation_page()
+    elif current_page == 'counselors':
+        render_counselors_page()
     
     # Footer
     st.markdown("---")
-    st.markdown(
-        "<div style='text-align: center; color: gray; padding: 20px;'>"
-        "💙 <strong>You're not alone.</strong> This AI counselor provides support, but professional counselors are always available for deeper help.<br>"
-        "🔒 <strong>Confidential:</strong> Your conversations here are private and not stored permanently.<br>"
-        "🚨 <strong>Crisis?</strong> Call 112 (Emergency) or 1860-2662-345 (iCALL Crisis Helpline) immediately."
-        "</div>", 
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+    <div style='text-align: center; color: #666; padding: 2rem; background: #f8f9fa; border-radius: 15px; margin: 2rem 0;'>
+        <div style='margin-bottom: 1rem;'>
+            <strong style='color: #667eea;'>💙 You're not alone.</strong> This AI counselor provides support, but professional counselors are always available for deeper help.
+        </div>
+        <div style='margin-bottom: 1rem;'>
+            <strong style='color: #667eea;'>🔒 Confidential:</strong> Your conversations here are private and not stored permanently.
+        </div>
+        <div>
+            <strong style='color: #ff6b6b;'>🚨 Crisis?</strong> Call 112 (Emergency) or 1860-2662-345 (iCALL Crisis Helpline) immediately.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    main()
+    main() st.columns(3)
+    
+    with col1:
+        if st.button("📊 PHQ-9 Depression Screening", use_container_width=True, type="primary"):
+            st.session_state.selected_assessment = "PHQ-9"
+            st.rerun()
+    
+    with col2:
+        if st.button("😰 GAD-7 Anxiety Screening", use_container_width=True, type="primary"):
+            st.session_state.selected_assessment = "GAD-7"
+            st.rerun()
+    
+    with col3:
+        if st.button("🔍 GHQ-12 General Health", use_container_width=True, type="primary"):
+            st.session_state.selected_assessment = "GHQ-12"
+            st.rerun()
+    
+    # Display selected assessment
+    if hasattr(st.session_state, 'selected_assessment'):
+        create_modern_screening_interface(st.session_state.selected_assessment)
+    
+    # Display results if available
+    display_modern_assessment_results()
+    
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+def create_modern_screening_interface(test_type):
+    """Create modern interface for mental health screening tests"""
+    if test_type == "PHQ-9":
+        questions = PHQ9_QUESTIONS
+        options = RESPONSE_OPTIONS
+        title = "📊 PHQ-9 Depression Screening"
+        description = "This questionnaire helps assess depression symptoms over the past 2 weeks."
+        
+    elif test_type == "GAD-7":
+        questions = GAD7_QUESTIONS
+        options = RESPONSE_OPTIONS
+        title = "😰 GAD-7 Anxiety Screening"
+        description = "This questionnaire helps assess anxiety symptoms over the past 2 weeks."
+        
+    elif test_type == "GHQ-12":
+        questions = GHQ12_QUESTIONS
+        options = GHQ_RESPONSE_OPTIONS
+        title = "🔍 GHQ-12 General Health Screening"
+        description = "This questionnaire assesses your recent psychological wellbeing."
+    
+    st.markdown(f"""
+    <div style="margin: 2rem 0;">
+        <h3 style="color: #667eea; margin-bottom: 0.5rem;">{title}</h3>
+        <p style="color: #666; font-style: italic; margin-bottom: 1.5rem;">{description}</p>
+        <p style="color: #888; font-size: 0.9rem; margin-bottom: 2rem;">Please answer honestly. Your responses are confidential and will help us understand how to support you better.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    responses = []
+    
+    with st.form(f"{test_type}_modern_form"):
+        for i, question in enumerate(questions):
+            st.markdown(f"""
+            <div class="question-card">
+                <div class="question-text">{question}</div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Create custom radio buttons
+            response = st.radio(
+                f"Question {i+1}",
+                options=list(range(len(options))),
+                format_func=lambda x: options[x],
+                key=f"{test_type}_modern_{i}",
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+            responses.append(response)
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+        
+        submitted = st.form_submit_button(
+            "Submit Assessment", 
+            use_container_width=True,
+            type="primary"
+        )
+        
+        if submitted:
+            if test_type == "PHQ-9":
+                score, severity = calculate_phq9_score(responses)
+                st.session_state[f'{test_type.lower()}_results'] = {
+                    'score': score,
+                    'severity': severity,
+                    'responses': responses
+                }
+            elif test_type == "GAD-7":
+                score, severity = calculate_gad7_score(responses)
+                st.session_state[f'{test_type.lower()}_results'] = {
+                    'score': score,
+                    'severity': severity,
+                    'responses': responses
+                }
+            elif test_type == "GHQ-12":
+                score, severity = calculate_ghq12_score(responses)
+                st.session_state[f'{test_type.lower()}_results'] = {
+                    'score': score,
+                    'severity': severity,
+                    'responses': responses
+                }
+            
+            st.rerun()
+
+def display_modern_assessment_results():
+    """Display assessment results with modern styling"""
+    results = {}
+    
+    # Collect all assessment results
+    for test in ['phq-9', 'gad-7', 'ghq-12']:
+        if f'{test}_results' in st.session_state:
+            results[test.replace('-', '')] = st.session_state[f'{test}_results']
+    
+    if not results:
+        return None
+    
+    st.markdown("""
+    <div style="margin: 2rem 0;">
+        <h3 style="color: #667eea;">📊 Your Assessment Results</h3>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Display results with empathetic framing
+    for test_name, result in results.items():
+        score = result['score']
+        severity = result['severity']
+        
+        # Color based on severity
+        if "severe" in severity.lower():
+            color = "#ff6b6b"
+            bg_color = "#ffe0e0"
+        elif "moderate" in severity.lower():
+            color = "#ffa502"
+            bg_color = "#fff4e0"
+        else:
+            color = "#51cf66"
+            bg_color = "#e8f5e8"
+        
+        st.markdown(f"""
+        <div style="
+            background: {bg_color};
+            border-left: 4px solid {color};
+            padding: 1.5rem;
+            margin: 1rem 0;
+            border-radius: 8px;
+        ">
+            <h4 style="color: {color}; margin: 0 0 0.5rem 0;">{test_name.upper()} Results</h4>
+            <p style="margin: 0 0 1rem 0; font-weight: 600;">Score: {score} - {severity}</p>
+        """, unsafe_allow_html=True)
+        
+        # Provide empathetic interpretation
+        if "severe" in severity.lower():
+            st.markdown("""
+            <p style="margin: 0;">💙 Your results suggest you might be experiencing significant distress. Please know that you're not alone, and seeking support is a sign of strength. I'd recommend speaking with one of our professional counselors.</p>
+            """, unsafe_allow_html=True)
+        elif "moderate" in severity.lower():
+            st.markdown("""
+            <p style="margin: 0;">💙 Your results indicate you might be experiencing some challenges. It's completely normal to go through difficult times, and there are effective ways to help you feel better.</p>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <p style="margin: 0;">💙 Your results suggest you're managing relatively well, though everyone can benefit from support and self-care strategies.</p>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Show counselor recommendation
+    counselor_type = recommend_counselor(results)
+    recommended_counselor = COUNSELORS[counselor_type]
+    
+    st.markdown(f"""
+    <div class="info-alert">
+        <h4 style="margin: 0 0 1rem 0;">🤝 Recommended Support</h4>
+        <p style="margin: 0 0 0.5rem 0;"><strong>Based on your assessment, I recommend connecting with {recommended_counselor['name']}:</strong></p>
+        <p style="margin: 0.5rem 0;">📞 <strong>Phone:</strong> {recommended_counselor['phone']}</p>
+        <p style="margin: 0.5rem 0;">🎯 <strong>Specializes in:</strong> {', '.join(recommended_counselor['expertise'])}</p>
+        <p style="margin: 0.5rem 0;">✨ <strong>Best for students with:</strong> {recommended_counselor['focus']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    return results
+
+def render_visual_page():
+    """Render the visual expression analysis page"""
+    st.markdown("""
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2 style="margin: 0;">🎨 Visual Chat Support</h2>
+            <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">Express your feelings through images, drawings, or journal entries. I'll help you understand what you're communicating.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    uploaded_image = st.file_uploader(
+        "Share your visual expression",
+        type=['png', 'jpg', 'jpeg'],
+        help="This could be artwork, journal pages, photos that represent your mood, or anything visual you'd like to share"
+    )
+    
+    if uploaded_image:
+        col1, col2 = st.columns([1, 1])
+        
+        with col1:
+            st.image(uploaded_image, caption="Your Visual Expression", use_container_width=True)
+        
+        with col2:
+            user_context = st.text_area(
+                "Tell me about this image (optional):",
+                placeholder="What were you feeling when you created/took this? What does it represent to you?",
+                height=100
+            )
+            
+            if st.button("🔍 Analyze Expression", use_container_width=True, type="primary"):
+                if 'vision_processor' in st.session_state:
+                    with st.spinner("Understanding your visual expression..."):
+                        try:
+                            # Save uploaded image to temporary file
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_img:
+                                temp_img.write(uploaded_image.read())
+                                temp_img_path = temp_img.name
+                            
+                            # Analyze emotional content
+                            analysis = st.session_state.vision_processor.analyze_emotional_content(
+                                temp_img_path, user_context
+                            )
+                            
+                            # Generate calming audio response
+                            audio_path = st.session_state.vision_processor.generate_calming_audio(
+                                analysis, use_elevenlabs=True
+                            )
+                            
+                            # Display results
+                            st.markdown("""
+                            <div class="info-alert">
+                                <h4 style="margin: 0 0 1rem 0;">💙 What I See in Your Expression</h4>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            st.markdown(analysis)
+                            
+                            if audio_path:
+                                st.audio(audio_path, format="audio/mp3")
+                            
+                            # Clean up temp file
+                            os.unlink(temp_img_path)
+                            
+                        except Exception as e:
+                            st.error("I'm having trouble analyzing the image right now, but I want you to know that your expression matters. Would you like to tell me about it instead?")
+                else:
+                    st.error("Image analysis is not available right now, but your creative expression is valuable. Consider sharing your feelings in the chat instead.")
+
+def render_relaxation_page():
+    """Render the guided relaxation page"""
+    st.markdown("""
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2 style="margin: 0;">🧘 Guided Relaxation & Mindfulness</h2>
+            <p style="margin: 0.5rem 0 0 0; opacity: 0.9;">Take a few minutes for yourself with these calming exercises</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin: 1rem 0;">
+            <h3 style="color: #667eea; margin: 0 0 1rem 0;">🫁 Breathing Exercise</h3>
+            <p style="color: #666; margin: 0 0 1.5rem 0;">4-7-8 breathing technique for immediate calm</p>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🎧 Start Breathing Exercise", use_container_width=True):
+            audio_path = generate_relaxation_audio("breathing", use_elevenlabs=True, elevenlabs_api_key=st.secrets.get("ELEVENLABS_API_KEY"))
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+                st.markdown('<div class="success-alert">💙 Take your time with this exercise. Breathe at your own pace.</div>', unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin: 1rem 0;">
+            <h3 style="color: #667eea; margin: 0 0 1rem 0;">🧠 Mindfulness</h3>
+            <p style="color: #666; margin: 0 0 1.5rem 0;">5-4-3-2-1 grounding technique</p>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🎧 Start Mindfulness Exercise", use_container_width=True):
+            audio_path = generate_relaxation_audio("mindfulness", use_elevenlabs=True, elevenlabs_api_key=st.secrets.get("ELEVENLABS_API_KEY"))
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+                st.markdown('<div class="success-alert">💙 Notice the present moment without judgment.</div>', unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; margin: 1rem 0;">
+            <h3 style="color: #667eea; margin: 0 0 1rem 0;">😌 Progressive Relaxation</h3>
+            <p style="color: #666; margin: 0 0 1.5rem 0;">Full body tension release</p>
+        """, unsafe_allow_html=True)
+        
+        if st.button("🎧 Start Relaxation Exercise", use_container_width=True):
+            audio_path = generate_relaxation_audio("progressive_relaxation", use_elevenlabs=True, elevenlabs_api_key=st.secrets.get("ELEVENLABS_API_KEY"))
+            if audio_path:
+                st.audio(audio_path, format="audio/mp3")
+                st.markdown('<div class="success-alert">💙 Let your body find its natural state of relaxation.</div>', unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="info-alert" style="margin: 2rem 0;">
+        <h4 style="margin: 0 0 0.5rem 0;">💡 Tip</h4>
+        <p style="margin: 0;">Regular practice of these techniques can help build resilience against stress and anxiety. Even 5 minutes a day can make a difference!</p>
+    </div>
+    """, unsafe_allow_html=True)
